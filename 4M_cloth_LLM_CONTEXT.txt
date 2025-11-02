@@ -1,0 +1,79 @@
+CONTEXT
+
+# 4M Cloth System Development - Progress Summary for New Chat
+
+Project overview:
+
+4M_cloth_inner.py is a fourth step in a mocap-to-Blender animation pipeline. The first three steps are (Step 1) perform the motion capture in MediaPipe, (Step 2) filter the data, and (step 3) transform the MediaPipe data coordinate system -Y=up into Blender +Z=up coordinate system. 
+
+
+## Current Status
+We are in the middle of updating `4M_cloth_inner.py` with a new vertex bundle architecture using a two-empties system (XYZ position control + RPY rotation control). 
+
+The two-empty system is designed to prevent constraint battles by separating position tracking (XYZ) from rotation tracking (RPY). 
+
+We need the garments to follow the control points, not just in the first frame where the garments are created, but later in the animation program when the control points are moved.
+
+We have successfully converted `create_pants` and `create_coat` to the new architecture, but several key functions remain to be updated.
+
+## Functions That Need Conversion
+- `create_sleeve`
+- `create_boot` 
+- `create_mitten`
+- `create_head`
+- `create_procedural_head`
+
+## New Architecture Implemented
+
+### Global Variables
+```python
+joint_control_systems = {}  # Two-empties systems: XYZ (position) + RPY (rotation)
+garment_configs = {}        # Loaded cloth configurations
+```
+
+### Key Components
+1. **Two-Empties System**: 
+   - `XYZ_empty`: Controls position only (COPY_LOCATION to control point)
+   - `RPY_empty`: Controls position + free rotation (COPY_LOCATION to XYZ_empty)
+
+2. **Center + Radius Approach**: Simplified vertex bundle weighting using spherical influence around RPY empty centers
+
+3. **Separated Configuration**: 
+   - `load_garment_configs()`: Loads JSON configurations into global
+   - `make_vertex_all_bundles()`: Creates vertex bundle systems
+
+### Helper Functions
+- `get_bundle_center(control_point_name)`: Returns current RPY empty location
+- `get_bundle_radius(control_point_name)`: Returns stored radius value
+- `get_bundle_radius_from_config(joint_type, side)`: Complex JSON lookup for setup
+
+## Recent Fixes Applied
+
+### Pants Weighting Improvements
+- **Hip Bundles**: Restricted influence radius (70% of original) and limited to top 20% of pants only
+- **Knee Bundles**: Enhanced influence in mid-leg area (1.5x boost) with reduced influence far from knee  
+- **Ankle Bundles**: Doubled influence radius and removed position-based reduction
+
+### Vertex Bundle System
+- Eliminated zero-length vector issues by removing unnecessary joint orientation
+- Simplified to single-bone approach with intelligent head/tail selection
+- Removed complex fallback chains in favor of simple error handling
+
+## Current Challenges
+1. **Animation Sync**: Garments getting "left behind" during animation due to static vertex bundle positions
+2. **Constraint Battles**: Balancing rigid anatomical form vs natural fabric drape
+3. **Rotation Control**: Maintaining cylindrical sleeve form while allowing natural fabric movement
+
+## Next Steps for New Chat
+1. Convert remaining garment functions (`create_sleeve`, `create_boot`, `create_mitten`, `create_head`, `create_procedural_head`) to use the new two-empties vertex bundle system
+2. Implement the center+radius spherical weighting approach in all garment functions
+3. Test animation synchronization to ensure garments follow control points correctly
+4. Balance position vs rotation control to achieve natural fabric behavior while maintaining anatomical form
+
+## Key Insights for Continuation
+- Use `joint_control_systems` global dictionary for all vertex bundle access
+- Implement simple spherical weighting using `get_bundle_center()` and `get_bundle_radius()`
+- Leverage the existing control point animation system that's already working
+- Focus on separating position control (XYZ) from rotation influence (RPY) to resolve constraint battles
+
+The foundation is now solid with the two-empties architecture - we need to systematically update the remaining garment functions to use this new system.
