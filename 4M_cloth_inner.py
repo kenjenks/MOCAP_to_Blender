@@ -3269,492 +3269,126 @@ def create_boot(armature_obj, figure_name, garment_config, global_cloth_settings
 
 ##########################################################################################
 
-def create_pants(armature_obj, figure_name, side="left"):
-    """Create continuous pants with coordinated vertex bundles for natural joint coverage"""
-    script_log(f"Creating continuous {side} pants with coordinated vertex bundles...")
+def create_pants(garment_name, waist_position, left_hip_position, right_hip_position,
+                 left_knee_position, right_knee_position, left_ankle_position, right_ankle_position,
+                 pants_length, pants_width, pants_resolution):
+    """Create pants with dynamic vertex weights that follow control points during animation"""
 
-    # Get pants config from global garment_configs
-    pants_config = garment_configs.get(f"{side}_pants", {})
+    # Create pants mesh
+    bpy.ops.mesh.primitive_cylinder_add(vertices=pants_resolution, radius=pants_width, depth=pants_length)
+    pants_obj = bpy.context.active_object
+    pants_obj.name = f"{garment_name}_pants"
+    pants_obj.location = waist_position
 
-    # Get leg bone positions
-    bpy.context.view_layer.objects.active = armature_obj
-    bpy.ops.object.mode_set(mode='POSE')
+    # Get all control point centers from two-empties system
+    control_points = {
+        'left_hip': get_bundle_center("left_hip"),
+        'right_hip': get_bundle_center("right_hip"),
+        'left_knee': get_bundle_center("left_knee"),
+        'right_knee': get_bundle_center("right_knee"),
+        'left_ankle': get_bundle_center("left_ankle"),
+        'right_ankle': get_bundle_center("right_ankle")
+    }
 
-    try:
-        if side == "left":
-            hip_bone_name = "DEF_LeftHip"
-            thigh_bone_name = "DEF_LeftThigh"
-            shin_bone_name = "DEF_LeftShin"
+    # Get radii with garment-specific adjustments from your working config
+    radii = {
+        'left_hip': get_bundle_radius("left_hip") * 0.7,  # Reduced for hips (70% of original)
+        'right_hip': get_bundle_radius("right_hip") * 0.7,
+        'left_knee': get_bundle_radius("left_knee") * 1.5,  # Enhanced for knees (150% of original)
+        'right_knee': get_bundle_radius("right_knee") * 1.5,
+        'left_ankle': get_bundle_radius("left_ankle") * 2.0,  # Doubled for ankles (200% of original)
+        'right_ankle': get_bundle_radius("right_ankle") * 2.0
+    }
 
-            # Control point names for new vertex bundle system
-            hip_control_point = "CTRL_LEFT_HIP"
-            knee_control_point = "CTRL_LEFT_KNEE"
-            ankle_control_point = "CTRL_LEFT_HEEL"
+    # Initialize vertex groups and store vertex/weight data for dynamic setup
+    vertex_data = {}  # Store which vertices get which weights for dynamic setup
+    for point_name in control_points.keys():
+        vg = pants_obj.vertex_groups.new(name=point_name)
+        vertex_data[point_name] = []  # Will store (vertex_index, weight) tuples
+
+    # Apply initial vertex group weighting AND collect data for dynamic setup
+    mesh = pants_obj.data
+    for vert in mesh.vertices:
+        vert_co = pants_obj.matrix_world @ vert.co
+        vert_height = vert_co.z - waist_position[2]  # Relative to waist
+
+        for point_name, center in control_points.items():
+            dist = (vert_co - center).length
+            max_radius = radii[point_name]
+
+            if dist <= max_radius:
+                # Base spherical weight
+                base_weight = 1.0 - (dist / max_radius)
+
+                # Height-based modulation - PRESERVING ALL YOUR EXISTING LOGIC
+                if 'hip' in point_name:
+                    # Hips only influence top 20% of pants
+                    height_factor = max(0.0, 1.0 - (abs(vert_height) / (pants_length * 0.2)))
+                    final_weight = base_weight * height_factor
+                    # Additional hip-specific constraint: only positive height (above waist)
+                    if vert_height > 0:
+                        final_weight = 0.0
+                elif 'knee' in point_name:
+                    # Knees influence mid-section most strongly
+                    knee_zone = abs(vert_height + pants_length * 0.3)  # Center around knee height
+                    height_factor = max(0.0, 1.0 - (knee_zone / (pants_length * 0.4)))
+                    final_weight = base_weight * height_factor * 1.2  # 1.2x boost for knees
+                    # Knee-specific: reduce influence far from knee area
+                    if abs(vert_height) > pants_length * 0.6:
+                        final_weight *= 0.3
+                else:  # ankles
+                    # Ankles influence bottom section with expanded radius
+                    ankle_zone = max(0.0, vert_height + pants_length * 0.8)
+                    height_factor = max(0.0, 1.0 - (ankle_zone / (pants_length * 0.2)))
+                    final_weight = base_weight * height_factor
+                    # Ankle-specific: no position-based reduction, maintain full influence
+
+                # Apply minimum weight threshold
+                if final_weight > 0.01:
+                    # Set initial static weight
+                    pants_obj.vertex_groups[point_name].add([vert.index], final_weight, 'REPLACE')
+                    # Store for dynamic setup
+                    vertex_data[point_name].append((vert.index, final_weight))
+
+    # SET UP DYNAMIC VERTEX WEIGHTS - NEW FUNCTIONALITY
+    script_log("Setting up dynamic vertex weights for pants...")
+    for point_name, vertices_weights in vertex_data.items():
+        if vertices_weights:  # Only if we have vertices for this control point
+            vertex_indices = [vw[0] for vw in vertices_weights]
+            initial_weights = [vw[1] for vw in vertices_weights]
+
+            script_log(f"Setting up {len(vertex_indices)} dynamic vertices for {point_name}")
+            setup_dynamic_vertex_weights(pants_obj, point_name, vertex_indices, initial_weights)
         else:
-            hip_bone_name = "DEF_RightHip"
-            thigh_bone_name = "DEF_RightThigh"
-            shin_bone_name = "DEF_RightShin"
-
-            # Control point names for new vertex bundle system
-            hip_control_point = "CTRL_RIGHT_HIP"
-            knee_control_point = "CTRL_RIGHT_KNEE"
-            ankle_control_point = "CTRL_RIGHT_HEEL"
-
-        hip_bone = armature_obj.pose.bones.get(hip_bone_name)
-        thigh_bone = armature_obj.pose.bones.get(thigh_bone_name)
-        shin_bone = armature_obj.pose.bones.get(shin_bone_name)
-
-        bpy.ops.object.mode_set(mode='OBJECT')
-
-        if not all([hip_bone, thigh_bone, shin_bone]):
-            script_log(f"ERROR: Could not find leg bones for {side} pants")
-            return None
-
-        # =========================================================================
-        # STEP 1: SET UP BONE CONSTRAINTS FIRST (LIKE SLEEVES DO)
-        # =========================================================================
-        script_log(f"DEBUG: Setting up bone constraints for {side} pants movement...")
-
-        bpy.context.view_layer.objects.active = armature_obj
-        bpy.ops.object.mode_set(mode='POSE')
-
-        # CLEAR EXISTING CONSTRAINTS FIRST (LIKE SLEEVES DO)
-        for bone_name in [hip_bone_name, thigh_bone_name, shin_bone_name]:
-            bone = armature_obj.pose.bones.get(bone_name)
-            if bone:
-                for constraint in list(bone.constraints):
-                    bone.constraints.remove(constraint)
-
-        # SET UP STRETCH_TO CONSTRAINTS TO CONTROL POINTS (LIKE SLEEVES DO)
-        constraints_added = 0
-
-        # HIP BONE: Constrain to hip control point
-        if hip_bone:
-            hip_target = bpy.data.objects.get(hip_control_point)
-            if hip_target:
-                stretch = hip_bone.constraints.new('STRETCH_TO')
-                stretch.target = hip_target
-                stretch.influence = 1.0
-                constraints_added += 1
-                script_log(f"✓ {hip_bone_name} STRETCH_TO -> {hip_control_point}")
-
-        # THIGH BONE: Constrain to knee control point (thigh tail points to knee)
-        if thigh_bone:
-            thigh_target = bpy.data.objects.get(knee_control_point)
-            if thigh_target:
-                stretch = thigh_bone.constraints.new('STRETCH_TO')
-                stretch.target = thigh_target
-                stretch.influence = 1.0
-                constraints_added += 1
-                script_log(f"✓ {thigh_bone_name} STRETCH_TO -> {knee_control_point}")
-
-        # SHIN BONE: Constrain to ankle control point (shin tail points to ankle)
-        if shin_bone:
-            shin_target = bpy.data.objects.get(ankle_control_point)
-            if shin_target:
-                stretch = shin_bone.constraints.new('STRETCH_TO')
-                stretch.target = shin_target
-                stretch.influence = 1.0
-                constraints_added += 1
-                script_log(f"✓ {shin_bone_name} STRETCH_TO -> {ankle_control_point}")
-
-        bpy.ops.object.mode_set(mode='OBJECT')
-        script_log(f"✓ Added {constraints_added} bone constraints for {side} pants")
-
-        # NOW GET UPDATED BONE POSITIONS AFTER CONSTRAINTS ARE APPLIED
-        bpy.context.view_layer.objects.active = armature_obj
-        bpy.ops.object.mode_set(mode='POSE')
-
-        hip_bone = armature_obj.pose.bones.get(hip_bone_name)
-        thigh_bone = armature_obj.pose.bones.get(thigh_bone_name)
-        shin_bone = armature_obj.pose.bones.get(shin_bone_name)
-
-        # Get bone positions in world space AFTER constraints are set
-        hip_pos = armature_obj.matrix_world @ hip_bone.tail
-        thigh_pos = armature_obj.matrix_world @ thigh_bone.head
-        knee_pos = armature_obj.matrix_world @ thigh_bone.tail
-        shin_pos = armature_obj.matrix_world @ shin_bone.head
-        ankle_pos = armature_obj.matrix_world @ shin_bone.tail
-
-        bpy.ops.object.mode_set(mode='OBJECT')
-
-        # Get pants dimensions from config
-        diameter_hip = pants_config.get("diameter_hip", 0.18)
-        diameter_knee = pants_config.get("diameter_knee", 0.14)
-        diameter_ankle = pants_config.get("diameter_ankle", 0.12)
-        segments = pants_config.get("segments", 32)
-
-        # Get artist-controlled settings
-        subdivision_config = pants_config.get("subdivision", {})
-        manual_cuts = subdivision_config.get("manual_cuts", 2)
-        subdiv_levels = subdivision_config.get("subdiv_levels", 2)
-        min_rings = subdivision_config.get("min_rings", 24)
-        rings_per_meter = subdivision_config.get("rings_per_meter", 50)
-
-        weighting_config = pants_config.get("vertex_weighting", {})
-        falloff_type = weighting_config.get("elbow_sphere_falloff", "quadratic")
-        min_weight_threshold = weighting_config.get("min_weight_threshold", 0.05)
-        sphere_influence_scale = weighting_config.get("sphere_influence_scale", 2.0)
-
-        # Calculate segment lengths - stop at ankle (shin tail)
-        thigh_length = (knee_pos - thigh_pos).length
-        shin_length = (ankle_pos - shin_pos).length
-        total_length = thigh_length + shin_length
-
-        script_log(f"DEBUG: {side} pants - Thigh length: {thigh_length:.3f}, Shin length: {shin_length:.3f}")
-        script_log(f"DEBUG: {side} pants - Total length: {total_length:.3f} (stopping at ankle)")
-        script_log(f"DEBUG: {side} pants - Bone constraints: {constraints_added} added")
-
-        # CREATE SINGLE CONTINUOUS CYLINDER (like sleeves)
-        script_log(f"DEBUG: Creating continuous {side} pants cylinder...")
-
-        # Use average radius for initial cylinder
-        avg_radius = (diameter_hip / 2 + diameter_knee / 2 + diameter_ankle / 2) / 3
-        bpy.ops.mesh.primitive_cylinder_add(
-            vertices=segments,
-            depth=total_length,
-            radius=avg_radius,
-            location=(hip_pos + ankle_pos) / 2  # Center between hip and ankle
-        )
-        pants_obj = bpy.context.active_object
-        pants_obj.name = f"{figure_name}_{side.capitalize()}Pants"
-
-        # Rotate to align with leg direction
-        leg_direction = (ankle_pos - hip_pos).normalized()
-        pants_obj.rotation_euler = leg_direction.to_track_quat('Z', 'Y').to_euler()
-
-        # ADD MANUAL SUBDIVISION
-        if manual_cuts > 0:
-            script_log(f"DEBUG: Adding {manual_cuts} manual subdivision cuts...")
-            bpy.context.view_layer.objects.active = pants_obj
-            bpy.ops.object.mode_set(mode='EDIT')
-            bpy.ops.mesh.select_mode(type='EDGE')
-            bpy.ops.mesh.select_all(action='SELECT')
-            bpy.ops.mesh.subdivide(number_cuts=manual_cuts)
-            bpy.ops.object.mode_set(mode='OBJECT')
-
-        # TAPER THE CONTINUOUS PANTS
-        script_log(f"DEBUG: Tapering {side} pants...")
-        bpy.context.view_layer.objects.active = pants_obj
-        bpy.ops.object.mode_set(mode='EDIT')
-        bm = bmesh.from_edit_mesh(pants_obj.data)
-
-        for vert in bm.verts:
-            # Normalize Z position from -0.5 (hip) to 0.5 (ankle)
-            z_norm = vert.co.z / (total_length / 2)
-
-            # Calculate target radius based on position along leg
-            if z_norm <= -0.3:  # Hip area
-                target_radius = diameter_hip / 2
-            elif z_norm <= 0.3:  # Knee area
-                target_radius = diameter_knee / 2
-            else:  # Ankle area
-                target_radius = diameter_ankle / 2
-
-            # Smooth transitions between areas
-            if -0.3 < z_norm < -0.1:  # Hip → Knee transition
-                blend = (z_norm + 0.3) / 0.2
-                target_radius = (diameter_hip / 2 * (1 - blend)) + (diameter_knee / 2 * blend)
-            elif 0.1 < z_norm < 0.3:  # Knee → Ankle transition
-                blend = (z_norm - 0.1) / 0.2
-                target_radius = (diameter_knee / 2 * (1 - blend)) + (diameter_ankle / 2 * blend)
-
-            # Scale vertex to target radius
-            current_radius = (vert.co.x ** 2 + vert.co.y ** 2) ** 0.5
-            if current_radius > 0.001:
-                scale_factor = target_radius / current_radius
-                vert.co.x *= scale_factor
-                vert.co.y *= scale_factor
-
-        bmesh.update_edit_mesh(pants_obj.data)
-        bpy.ops.object.mode_set(mode='OBJECT')
-
-        # ADD SUBDIVISION SURFACE MODIFIER
-        if subdiv_levels > 0:
-            script_log(f"DEBUG: Adding subdivision surface with {subdiv_levels} levels...")
-            subdiv_mod = pants_obj.modifiers.new(name="Subdivision", type='SUBSURF')
-            subdiv_mod.levels = subdiv_levels
-            subdiv_mod.render_levels = subdiv_levels
-
-        # =========================================================================
-        # NEW VERTEX BUNDLE SYSTEM: Get bundle centers and radii
-        # =========================================================================
-        script_log("DEBUG: Using NEW vertex bundle system for pants...")
-
-        # Get bundle centers from new system
-        hip_center = get_bundle_center(hip_control_point)
-        knee_center = get_bundle_center(knee_control_point)
-        ankle_center = get_bundle_center(ankle_control_point)
-
-        # Get bundle radii for influence calculation
-        hip_radius = get_bundle_radius(hip_control_point)
-        knee_radius = get_bundle_radius(knee_control_point)
-        ankle_radius = get_bundle_radius(ankle_control_point)
-
-        if not all([hip_center, knee_center, ankle_center]):
-            script_log(f"ERROR: Missing vertex bundle centers for {side} pants")
-            if hip_center == None:
-                script_log(f"ERROR: Missing hip_center")
-            if knee_center == None:
-                script_log(f"ERROR: Missing knee_center")
-            if ankle_center == None:
-                script_log(f"ERROR: Missing ankle_center")
-            return None
-
-        script_log(f"✓ Using new vertex bundle system:")
-        script_log(f"  - Hip: {hip_center}, radius: {hip_radius}")
-        script_log(f"  - Knee: {knee_center}, radius: {knee_radius}")
-        script_log(f"  - Ankle: {ankle_center}, radius: {ankle_radius}")
-
-        # Create spherical vertex groups
-        hip_vertex_group = pants_obj.vertex_groups.new(name=f"Hip_Sphere_{side}")
-        knee_vertex_group = pants_obj.vertex_groups.new(name=f"Knee_Sphere_{side}")
-        ankle_vertex_group = pants_obj.vertex_groups.new(name=f"Ankle_Sphere_{side}")
-
-        # Calculate sphere radii for bundle integration
-        hip_sphere_radius = hip_radius * sphere_influence_scale
-        knee_sphere_radius = knee_radius * sphere_influence_scale
-        ankle_sphere_radius = ankle_radius * sphere_influence_scale
-
-        # =========================================================================
-        # FIXED: APPLY HIP BUNDLE VERTEX WEIGHTS WITH RESTRICTED INFLUENCE
-        # =========================================================================
-        script_log(f"✓ Applying hip vertex bundle from {hip_control_point}")
-
-        # REDUCE hip sphere radius to limit influence area
-        hip_sphere_radius_restricted = hip_sphere_radius * 0.7
-
-        for i, vertex in enumerate(pants_obj.data.vertices):
-            vert_pos = pants_obj.matrix_world @ vertex.co
-            distance = (vert_pos - hip_center).length
-
-            # Apply weight based on distance to bundle center
-            if distance <= hip_sphere_radius_restricted:
-                weight = 1.0 - (distance / hip_sphere_radius_restricted)
-                # Apply falloff type
-                if falloff_type == "quadratic":
-                    weight = weight * weight
-                elif falloff_type == "smooth":
-                    weight = weight * weight * (3 - 2 * weight)
-
-                # STRICTLY LIMIT HIP INFLUENCE TO UPPER PANTS ONLY
-                vert_local = pants_obj.matrix_world.inverted() @ vert_pos
-                z_norm = (vert_local.z + total_length / 2) / total_length  # 0=hip, 1=ankle
-
-                if z_norm < 0.2:  # Only top 20% near hips
-                    weight *= 1.0  # Full influence
-                elif z_norm < 0.4:  # Next 20% - reduced influence
-                    weight *= 0.3  # Drastically reduced
-                else:  # Below 40% - minimal to no influence
-                    weight *= 0.05  # Almost no hip influence
-
-                if weight > min_weight_threshold:
-                    hip_vertex_group.add([i], weight, 'REPLACE')
-
-        # =========================================================================
-        # FIXED: APPLY KNEE BUNDLE VERTEX WEIGHTS WITH ENHANCED MID-LEG INFLUENCE
-        # =========================================================================
-        script_log(f"✓ Applying knee vertex bundle from {knee_control_point}")
-
-        for i, vertex in enumerate(pants_obj.data.vertices):
-            vert_pos = pants_obj.matrix_world @ vertex.co
-            distance = (vert_pos - knee_center).length
-
-            # Apply weight based on distance to bundle center
-            if distance <= knee_sphere_radius:
-                weight = 1.0 - (distance / knee_sphere_radius)
-                # Apply falloff type
-                if falloff_type == "quadratic":
-                    weight = weight * weight
-                elif falloff_type == "smooth":
-                    weight = weight * weight * (3 - 2 * weight)
-
-                # ENHANCE knee influence in mid-leg area
-                vert_local = pants_obj.matrix_world.inverted() @ vert_pos
-                z_norm = (vert_local.z + total_length / 2) / total_length
-
-                if 0.3 <= z_norm <= 0.7:  # Mid-leg area around knee
-                    weight *= 1.5  # Boost knee influence
-                elif z_norm < 0.2 or z_norm > 0.8:  # Far from knee
-                    weight *= 0.3  # Reduce influence
-
-                if weight > min_weight_threshold:
-                    knee_vertex_group.add([i], weight, 'REPLACE')
-
-        # =========================================================================
-        # FIXED: APPLY ANKLE BUNDLE VERTEX WEIGHTS WITH BOOSTED INFLUENCE
-        # =========================================================================
-        script_log(f"✓ Applying ankle vertex bundle from {ankle_control_point}")
-
-        # DOUBLE the ankle sphere radius for better influence
-        ankle_sphere_radius_boosted = ankle_sphere_radius * 2.0
-
-        for i, vertex in enumerate(pants_obj.data.vertices):
-            vert_pos = pants_obj.matrix_world @ vertex.co
-            distance = (vert_pos - ankle_center).length
-
-            # Apply weight based on distance to bundle center
-            # REMOVED the position-based reduction - ankle gets full influence
-            if distance <= ankle_sphere_radius_boosted:
-                weight = 1.0 - (distance / ankle_sphere_radius_boosted)
-                # Apply falloff type
-                if falloff_type == "quadratic":
-                    weight = weight * weight
-                elif falloff_type == "smooth":
-                    weight = weight * weight * (3 - 2 * weight)
-
-                # NO POSITION-BASED REDUCTION - ankle gets full influence
-                if weight > min_weight_threshold:
-                    ankle_vertex_group.add([i], weight, 'REPLACE')
-
-        # CREATE COMBINED PINNING GROUP FOR PANTS
-        script_log(f"DEBUG: Creating combined pinning group for {side} pants...")
-        combined_pinning_group = pants_obj.vertex_groups.new(name=f"{side}_Pants_Combined_Anchors")
-
-        # Combine weights from all three spherical groups (hip, knee, ankle)
-        for i in range(len(pants_obj.data.vertices)):
-            max_weight = 0.0
-            for group_name in [f"Hip_Sphere_{side}", f"Knee_Sphere_{side}", f"Ankle_Sphere_{side}"]:
-                group = pants_obj.vertex_groups.get(group_name)
-                if group:
-                    try:
-                        weight = group.weight(i)
-                        max_weight = max(max_weight, weight)
-                    except:
-                        # Vertex not in this group, continue
-                        pass
-
-            if max_weight > min_weight_threshold:
-                combined_pinning_group.add([i], max_weight, 'REPLACE')
-
-        script_log(f"✓ Created {side}_Pants_Combined_Anchors with weights from hip, knee, and ankle spheres")
-
-        # TARGETED CLOTH SIMULATION WITH SIMPLE COLLISIONS
-        cloth_config = pants_config.get("cloth_settings", {})
-        if cloth_config.get("enabled", True):
-            script_log(f"DEBUG: Adding cloth simulation for {side} pants (simple collisions)...")
-            cloth_mod = pants_obj.modifiers.new(name="Cloth", type='CLOTH')
-
-            # Apply cloth settings from config
-            cloth_mod.settings.quality = cloth_config.get("quality", 12)
-            cloth_mod.settings.mass = cloth_config.get("mass", 0.2)
-            cloth_mod.settings.tension_stiffness = cloth_config.get("tension_stiffness", 6.0)
-            cloth_mod.settings.compression_stiffness = cloth_config.get("compression_stiffness", 5.0)
-            cloth_mod.settings.shear_stiffness = cloth_config.get("shear_stiffness", 4.0)
-            cloth_mod.settings.bending_stiffness = cloth_config.get("bending_stiffness", 0.6)
-            cloth_mod.settings.air_damping = cloth_config.get("air_damping", 0.8)
-            cloth_mod.settings.time_scale = cloth_config.get("time_scale", 1.0)
-
-            # SIMPLE COLLISIONS - WILL INTERACT WITH COAT AUTOMATICALLY
-            cloth_mod.collision_settings.use_collision = True
-            cloth_mod.collision_settings.collision_quality = cloth_config.get("collision_quality", 8)
-            cloth_mod.collision_settings.self_distance_min = cloth_config.get("self_distance_min", 0.002)
-
-            # Self-collision for pants fabric
-            cloth_mod.collision_settings.use_self_collision = True
-
-            # PIN CLOTH TO COMBINED SPHERICAL VERTEX GROUP
-            cloth_mod.settings.vertex_group_mass = f"{side}_Pants_Combined_Anchors"
-
-            script_log(f"✓ Pants cloth: self-collision + simple collisions (will interact with coat)")
-        else:
-            script_log(f"DEBUG: Cloth simulation disabled for {side} pants")
-
-        # SETUP ARMATURE MODIFIER AND VERTEX GROUPS FOR BONE DEFORMATION (LIKE SLEEVES)
-        script_log(f"DEBUG: Setting up armature modifier and vertex groups for {side} pants...")
-
-        # Clear any existing vertex groups (except the spherical ones we just created)
-        groups_to_keep = [f"Hip_Sphere_{side}", f"Knee_Sphere_{side}", f"Ankle_Sphere_{side}",
-                          f"{side}_Pants_Combined_Anchors"]
-        for vg in list(pants_obj.vertex_groups):
-            if vg.name not in groups_to_keep:
-                pants_obj.vertex_groups.remove(vg)
-
-        # Remove any existing armature modifiers
-        for mod in list(pants_obj.modifiers):
-            if mod.type == 'ARMATURE':
-                pants_obj.modifiers.remove(mod)
-
-        # Create vertex groups for bone deformation (LIKE SLEEVES DO)
-        hip_group = pants_obj.vertex_groups.new(name=hip_bone_name)
-        thigh_group = pants_obj.vertex_groups.new(name=thigh_bone_name)
-        shin_group = pants_obj.vertex_groups.new(name=shin_bone_name)
-
-        # Assign vertex weights based on position along pants
-        for i, vertex in enumerate(pants_obj.data.vertices):
-            vert_local = pants_obj.matrix_world.inverted() @ vertex.co
-            z_norm = (vert_local.z + total_length / 2) / total_length  # 0=hip, 1=ankle
-
-            if z_norm < 0.3:  # Upper part - hip to upper thigh
-                hip_weight = 1.0 - (z_norm / 0.3)
-                thigh_weight = z_norm / 0.3
-                hip_group.add([i], hip_weight, 'REPLACE')
-                thigh_group.add([i], thigh_weight, 'REPLACE')
-            elif z_norm < 0.7:  # Middle part - thigh to shin
-                thigh_weight = 1.0 - ((z_norm - 0.3) / 0.4)
-                shin_weight = (z_norm - 0.3) / 0.4
-                thigh_group.add([i], thigh_weight, 'REPLACE')
-                shin_group.add([i], shin_weight, 'REPLACE')
-            else:  # Lower part - shin to ankle
-                shin_weight = 1.0 - ((z_norm - 0.7) / 0.3)
-                shin_group.add([i], shin_weight, 'REPLACE')
-
-        # Add armature modifier
-        armature_mod = pants_obj.modifiers.new(name="Armature", type='ARMATURE')
-        armature_mod.object = armature_obj
-        armature_mod.use_vertex_groups = True
-        script_log(f"✓ Added armature modifier with vertex group deformation")
-
-        # Add material
-        apply_material_from_config(pants_obj, f"{side}_pants")
-
-        # SET PROPER MODIFIER ORDER
-        script_log(f"DEBUG: Setting proper modifier order for {side} pants...")
-        bpy.context.view_layer.objects.active = pants_obj
-        modifiers = pants_obj.modifiers
-
-        # Build correct order based on which modifiers are present
-        correct_order = ["Subdivision", "Armature"]
-        if cloth_config.get("enabled", True):
-            correct_order.append("Cloth")
-
-        for mod_name in correct_order:
-            mod_index = modifiers.find(mod_name)
-            if mod_index >= 0:
-                while mod_index > correct_order.index(mod_name):
-                    bpy.ops.object.modifier_move_up(modifier=mod_name)
-                    mod_index -= 1
-
-        # VERIFY THE SETUP
-        script_log(f"DEBUG: Verifying {side} pants setup...")
-        if cloth_config.get("enabled",
-                            True) and cloth_mod.settings.vertex_group_mass == f"{side}_Pants_Combined_Anchors":
-            script_log(f"✓ Cloth pinned to {side}_Pants_Combined_Anchors vertex group")
-        else:
-            script_log(f"⚠ Cloth not pinned to spherical vertex group (simulation disabled)")
-
-        script_log(f"✓ Created {side} pants with NEW vertex bundle system")
-        script_log(f"✓ Bone constraints: {constraints_added} STRETCH_TO constraints added")
-        script_log(f"✓ Vertices weighted to hip, knee, and ankle spherical vertex groups")
-        script_log(f"✓ Armature modifier configured for deformation")
-        script_log(f"✓ Pants object parented to armature")
-        if cloth_config.get("enabled", True):
-            script_log(f"✓ Cloth pinned to combined anchors (hip+knee+ankle)")
-            script_log(f"✓ Modern Blender 4.3+ cloth API applied")
-            script_log(f"✓ Simple collisions enabled (will interact with coat)")
-        script_log(
-            f"✓ NEW VERTEX BUNDLE SYSTEM: Using {hip_control_point}, {knee_control_point}, {ankle_control_point}")
-
-        pants_obj = setup_garment_dynamic_weighting(pants_obj, side, "pants")
-
-        return pants_obj
-
-    except Exception as e:
-        script_log(f"ERROR creating {side} pants: {e}")
-        import traceback
-        script_log(f"Traceback: {traceback.format_exc()}")
-        bpy.ops.object.mode_set(mode='OBJECT')
-        return None
+            script_log(f"No vertices found for {point_name}, skipping dynamic setup")
+
+    # Setup cloth simulation - PRESERVING YOUR EXISTING CLOTH SETUP
+    cloth_mod = pants_obj.modifiers.new(name="Cloth", type='CLOTH')
+    cloth_mod.settings.quality = 6
+    cloth_mod.settings.time_scale = 1.0
+    cloth_mod.settings.mass = 0.5  # Denim weight
+    cloth_mod.settings.tension_stiffness = 25.0
+    cloth_mod.settings.compression_stiffness = 15.0
+    cloth_mod.settings.shear_stiffness = 10.0
+    cloth_mod.settings.bending_stiffness = 5.0
+
+    # Add collision modifier
+    coll_mod = pants_obj.modifiers.new(name="Collision", type='COLLISION')
+
+    # Set cloth collision settings
+    cloth_mod.collision_settings.collision_quality = 5
+    cloth_mod.collision_settings.distance_min = 0.001
+
+    # Add subdivision surface for better deformation
+    subdiv_mod = pants_obj.modifiers.new(name="Subdivision", type='SUBSURF')
+    subdiv_mod.levels = 1
+    subdiv_mod.render_levels = 2
+
+    script_log(f"Pants '{pants_obj.name}' creation with dynamic weights complete!")
+    script_log(f"Total vertices: {len(mesh.vertices)}")
+    script_log(f"Vertex groups created: {[vg.name for vg in pants_obj.vertex_groups]}")
+
+    return pants_obj
 
 ##########################################################################################
 
@@ -4182,559 +3816,148 @@ def create_mitten(armature_obj, figure_name, garment_config, global_cloth_settin
 
 ##########################################################################################
 
-def create_coat(armature_obj, figure_name):
-    """Create coat torso garment with shoulder coordination and length variations"""
-    script_log("Creating coat torso garment...")
-
-    # Get coat configuration
-    coat_length = garment_configs.get("coat_length", "short")  # "short" or "long"
-    radial_segments = garment_configs.get("radial_segments", 32)
-    longitudinal_segments = garment_configs.get("longitudinal_segments", 24)
-    torso_radius = garment_configs.get("torso_radius", 0.25)
-    coat_height = garment_configs.get("coat_height", 0.8)
-    puffiness = garment_configs.get("puffiness", 1.05)
-
-    # GET SHOULDER DIAMETER FROM SLEEVE CONFIG
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    CLOTH_CONFIG_FILE = os.path.join(script_dir, "4M_cloth_config.json")
-
-    diameter_shoulder = 0.15  # Fallback value
-    try:
-        with open(CLOTH_CONFIG_FILE, 'r') as file:
-            cloth_config_data = json.load(file)
-            sleeve_config = cloth_config_data.get("cloth_garments", {}).get("left_sleeve", {})
-            diameter_shoulder = sleeve_config.get("diameter_shoulder", 0.15)  # Get from sleeve config
-    except:
-        script_log(f"⚠ Could not load shoulder diameter from config, using fallback: {diameter_shoulder}")
-
-    script_log(f"DEBUG: Coat - Length: {coat_length}, Radial segments: {radial_segments}")
-    script_log(f"DEBUG: Coat - Longitudinal segments: {longitudinal_segments}, Height: {coat_height}")
-    script_log(
-        f"DEBUG: Coat - Torso radius: {torso_radius}, Shoulder diameter: {diameter_shoulder}, Puffiness: {puffiness}")
-
-    # Get shoulder positions for coordination
-    bpy.context.view_layer.objects.active = armature_obj
-    bpy.ops.object.mode_set(mode='POSE')
-
-    try:
-        # Get shoulder and spine bones for positioning
-        left_shoulder_bone = armature_obj.pose.bones.get("DEF_LeftShoulder")
-        right_shoulder_bone = armature_obj.pose.bones.get("DEF_RightShoulder")
-        neck_bone = armature_obj.pose.bones.get("DEF_Neck")
-        upper_spine_bone = armature_obj.pose.bones.get("DEF_UpperSpine")
-
-        bpy.ops.object.mode_set(mode='OBJECT')
-
-        if not all([left_shoulder_bone, right_shoulder_bone, neck_bone, upper_spine_bone]):
-            script_log("ERROR: Could not find required bones for coat")
-            return None
-
-        # Get bone positions in world space
-        left_shoulder_pos = armature_obj.matrix_world @ left_shoulder_bone.tail
-        right_shoulder_pos = armature_obj.matrix_world @ right_shoulder_bone.tail
-        upper_spine_pos = armature_obj.matrix_world @ upper_spine_bone.head
-
-        # Calculate coat dimensions
-        shoulder_width = (right_shoulder_pos - left_shoulder_pos).length
-        shoulder_center = (left_shoulder_pos + right_shoulder_pos) / 2
-        spine_to_shoulder = (shoulder_center - upper_spine_pos).length
-
-        # =========================================================================
-        # STEP 1: CREATE VERTICAL CYLINDER (MAIN BODY) - APPLY Y-SQUISH TO MATCH SHOULDER DIAMETER
-        # =========================================================================
-        script_log("DEBUG: Creating vertical cylinder for coat body...")
-
-        # Position cylinder centered at shoulders, extending downward
-        vertical_center = shoulder_center + Vector((0, 0, -coat_height / 2))
-
-        bpy.ops.mesh.primitive_cylinder_add(
-            vertices=radial_segments,
-            depth=coat_height,
-            radius=torso_radius,  # Starts with torso_radius = 0.25 from config
-            location=vertical_center
-        )
-        vertical_cylinder = bpy.context.active_object
-        vertical_cylinder.name = f"{figure_name}_Coat_Vertical"
-
-        # CALCULATE Y SCALE TO MATCH SHOULDER DIAMETER
-        # Current Y diameter = torso_radius * 2 = 0.25 * 2 = 0.50
-        # Target Y diameter = shoulder_diameter = 0.15
-        # Y scale ratio = target / current = 0.15 / 0.50 = 0.3
-        y_scale_ratio = diameter_shoulder / (torso_radius * 2)
-
-        # Apply Y-squish: X=1.0, Y=calculated ratio, Z=1.0
-        vertical_cylinder.scale = (1.0, y_scale_ratio, 1.0)
-        script_log(
-            f"✓ Vertical cylinder Y-squish: torso_radius={torso_radius} → Y-scale={y_scale_ratio:.3f} to match diameter_shoulder={diameter_shoulder}")
-
-        # =========================================================================
-        # STEP 2: ADD VERTICAL SUBDIVISIONS FOR Z-AXIS FLEXIBILITY (PRESERVE SHAPE)
-        # =========================================================================
-        script_log("DEBUG: Adding vertical subdivisions for coat flexibility...")
-
-        # Get longitudinal segments from config
-        longitudinal_segments = garment_configs.get("longitudinal_segments", 24)
-        # Subtract 1 because the cylinder already has top and bottom rings
-        number_cuts = max(1, longitudinal_segments - 1)
-
-        script_log(f"DEBUG: Using {longitudinal_segments} longitudinal segments, adding {number_cuts} vertical cuts")
-
-        bpy.context.view_layer.objects.active = vertical_cylinder
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_mode(type='EDGE')
-
-        # Select all vertical edges
-        bpy.ops.mesh.select_all(action='DESELECT')
-
-        bm = bmesh.from_edit_mesh(vertical_cylinder.data)
-
-        for edge in bm.edges:
-            # Check if edge is approximately vertical (different Z coordinates)
-            if abs(edge.verts[0].co.z - edge.verts[1].co.z) > 0.01:
-                edge.select = True
-
-        # Subdivide only the selected vertical edges using config value
-        bpy.ops.mesh.subdivide(number_cuts=number_cuts, smoothness=0.0)
-
-        bpy.ops.object.mode_set(mode='OBJECT')
-        script_log(f"✓ Added {number_cuts} vertical subdivisions using longitudinal_segments={longitudinal_segments}")
-
-        # =========================================================================
-        # STEP 3: LONG COAT - QUARTER SEPARATION (FRONT SPLIT) AND DELETE BOTTOM FACE
-        # =========================================================================
-        if coat_length == "long":
-            script_log("DEBUG: Creating front split and deleting bottom face for long coat...")
-
-            # Get skirt_start_ratio from config with fallback
-            long_coat_settings = garment_configs.get("coat_length_settings", {}).get("long", {})
-            skirt_start_ratio = long_coat_settings.get("skirt_start_ratio", 0.6)  # Default to 0.6 if not specified
-
-            # Calculate skirt region dimensions (bottom portion of coat)
-            skirt_start_z = -coat_height * (1 - skirt_start_ratio)
-            split_depth = coat_height * 0.8
-            split_width = 0.05
-
-            script_log(f"DEBUG: Long coat skirt starts at {skirt_start_ratio * 100}% down (z={skirt_start_z:.3f})")
-
-            # Create split cutter object (thin vertical plane)
-            bpy.ops.mesh.primitive_plane_add(
-                size=split_depth,
-                location=vertical_center + Vector((0, 0, skirt_start_z))
-            )
-            split_cutter = bpy.context.active_object
-            split_cutter.name = f"{figure_name}_CoatSplit_Cutter"
-
-            # Scale cutter to be a thin vertical strip
-            split_cutter.scale = (1.0, split_width / split_depth, 1.0)
-            split_cutter.rotation_euler = (0, math.radians(90), 0)
-
-            # Position cutter at front center of coat
-            split_cutter.location.y = vertical_cylinder.location.y + diameter_shoulder * 0.5
-
-            # Add Boolean modifier to subtract split from coat
-            bool_split = vertical_cylinder.modifiers.new(name="Split_Front", type='BOOLEAN')
-            bool_split.operation = 'DIFFERENCE'
-            bool_split.object = split_cutter
-            bool_split.solver = 'FAST'
-
-            # Apply the Boolean subtraction
-            bpy.context.view_layer.objects.active = vertical_cylinder
-            bpy.ops.object.modifier_apply(modifier="Split_Front")
-
-            # Remove the cutter object
-            bpy.data.objects.remove(split_cutter, do_unlink=True)
-
-            script_log("✓ Created front split using Boolean subtraction in FAST mode")
-
-            # The bottom face deletion creates the open-bottom cylinder needed
-            # for the coat torso, allowing it to drape naturally over the
-            # lower body while maintaining the closed top at the shoulders.
-
-            # Find and delete bottom face of vertical cylinder
-            script_log("Finding and deleting bottom face of vertical cylinder...")
-            bpy.context.view_layer.objects.active = vertical_cylinder
-            bpy.ops.object.mode_set(mode='EDIT')
-            bpy.ops.mesh.select_mode(type='FACE')
-            bpy.ops.mesh.select_all(action='DESELECT')
-
-            # Calculate the Z threshold for bottom face (shoulder_center Z minus coat_height)
-            bottom_z_threshold = shoulder_center.z - coat_height + 0.01  # Small tolerance
-
-            bm = bmesh.from_edit_mesh(vertical_cylinder.data)
-            bottom_faces = []
-
-            for face in bm.faces:
-                # Check if all vertices in this face are near the bottom
-                all_vertices_bottom = True
-                for vert in face.verts:
-                    world_pos = vertical_cylinder.matrix_world @ vert.co
-                    if abs(world_pos.z - bottom_z_threshold) > 0.02:  # 2cm tolerance
-                        all_vertices_bottom = False
-                        break
-
-                if all_vertices_bottom:
-                    bottom_faces.append(face)
-
-            # Select and delete bottom faces
-            if bottom_faces:
-                bmesh.ops.delete(bm, geom=bottom_faces, context='FACES')
-                script_log(f"Deleted {len(bottom_faces)} bottom face(s)")
-            else:
-                script_log("WARNING: No bottom face found to delete")
-
-            bmesh.update_edit_mesh(vertical_cylinder.data)
-            bpy.ops.object.mode_set(mode='OBJECT')
-
-        # =========================================================================
-        # STEP 4: CREATE HORIZONTAL CYLINDER (SHOULDERS/CHEST)
-        # =========================================================================
-        script_log(f"DEBUG: Creating horizontal cylinder for shoulders, width {shoulder_width}...")
-
-        # Position horizontal cylinder between shoulders
-        horizontal_center = shoulder_center
-        shoulder_vector = (right_shoulder_pos - left_shoulder_pos).normalized()
-
-        bpy.ops.mesh.primitive_cylinder_add(
-            vertices=radial_segments,
-            depth=shoulder_width,
-            radius=diameter_shoulder / 2.0,
-            location=horizontal_center
-        )
-        horizontal_cylinder = bpy.context.active_object
-        horizontal_cylinder.name = f"{figure_name}_Coat_Horizontal"
-
-        # Rotate to align with shoulder line
-        horizontal_cylinder.rotation_euler = shoulder_vector.to_track_quat('Z', 'Y').to_euler()
-
-        # =========================================================================
-        # STEP 5: COMBINE CYLINDERS WITH BOOLEAN UNION
-        # =========================================================================
-        script_log("DEBUG: Combining cylinders with boolean union...")
-
-        # Set vertical cylinder as main object
-        coat_obj = vertical_cylinder
-        coat_obj.name = f"{figure_name}_Coat"
-
-        # Add boolean modifier to combine with horizontal cylinder
-        boolean_mod = coat_obj.modifiers.new(name="Boolean_Union", type='BOOLEAN')
-        boolean_mod.operation = 'UNION'
-        boolean_mod.object = horizontal_cylinder
-
-        # Apply boolean modifier
-        bpy.context.view_layer.objects.active = coat_obj
-        bpy.ops.object.modifier_apply(modifier="Boolean_Union")
-
-        # Remove horizontal cylinder
-        bpy.data.objects.remove(horizontal_cylinder, do_unlink=True)
-
-        # =========================================================================
-        # STEP 6: SMOOTH ARMPIT AREAS
-        # =========================================================================
-        smooth_armpits = garment_configs.get("smooth_armpits", False)
-        if smooth_armpits:
-            script_log("DEBUG: Smoothing armpit areas...")
-
-            bpy.context.view_layer.objects.active = coat_obj
-            bpy.ops.object.mode_set(mode='EDIT')
-            bpy.ops.mesh.select_mode(type='VERT')  # Blender 4.4.4 uses 'VERT' not 'VERTEX'
-
-            # Select vertices in armpit regions and smooth them
-            bm = bmesh.from_edit_mesh(coat_obj.data)
-
-            for vert in bm.verts:
-                # Armpit regions are around the shoulder connections
-                vert_local = coat_obj.matrix_world.inverted() @ vert.co
-                if abs(vert_local.x) > torso_radius * 0.8 and vert_local.z > -0.1:
-                    vert.select = True
-
-            if any(v.select for v in bm.verts):
-                bpy.ops.mesh.vertices_smooth(factor=0.5, repeat=3)
-
-            bpy.ops.object.mode_set(mode='OBJECT')
-
-        # =========================================================================
-        # STEP 7: SETUP VERTEX GROUPS WITH NEW VERTEX BUNDLE SYSTEM
-        # =========================================================================
-        script_log("DEBUG: Setting up coat vertex groups with NEW vertex bundle system...")
-
-        # Clear any existing parenting
-        coat_obj.parent = None
-
-        # Clear any existing vertex groups
-        for vg in list(coat_obj.vertex_groups):
-            coat_obj.vertex_groups.remove(vg)
-
-        # Remove any existing armature modifiers
-        for mod in list(coat_obj.modifiers):
-            if mod.type == 'ARMATURE':
-                coat_obj.modifiers.remove(mod)
-
-        # =========================================================================
-        # NEW VERTEX BUNDLE SYSTEM: Get bundle centers and radii
-        # =========================================================================
-        script_log("DEBUG: Using NEW vertex bundle system for coat...")
-
-        # Get shoulder bundle centers from new system
-        left_shoulder_center = get_bundle_center("CTRL_LEFT_SHOULDER")
-        right_shoulder_center = get_bundle_center("CTRL_RIGHT_SHOULDER")
-        left_shoulder_radius = get_bundle_radius("CTRL_LEFT_SHOULDER")
-        right_shoulder_radius = get_bundle_radius("CTRL_RIGHT_SHOULDER")
-
-        # Get hip bundle centers for short coats
-        if coat_length == "short":
-            left_hip_center = get_bundle_center("CTRL_LEFT_HIP")
-            right_hip_center = get_bundle_center("CTRL_RIGHT_HIP")
-            left_hip_radius = get_bundle_radius("CTRL_LEFT_HIP")
-            right_hip_radius = get_bundle_radius("CTRL_RIGHT_HIP")
-
-        if not all([left_shoulder_center, right_shoulder_center]):
-            script_log("ERROR: Missing shoulder bundle centers for coat")
-            return None
-
-        script_log(f"✓ Using new vertex bundle system:")
-        script_log(f"  - Left shoulder: {left_shoulder_center}, radius: {left_shoulder_radius}")
-        script_log(f"  - Right shoulder: {right_shoulder_center}, radius: {right_shoulder_radius}")
-        if coat_length == "short":
-            script_log(f"  - Left hip: {left_hip_center}, radius: {left_hip_radius}")
-            script_log(f"  - Right hip: {right_hip_center}, radius: {right_hip_radius}")
-
-        # Create vertex groups for shoulders
-        left_shoulder_group = coat_obj.vertex_groups.new(name="Bundle_Left_Shoulder")
-        right_shoulder_group = coat_obj.vertex_groups.new(name="Bundle_Right_Shoulder")
-
-        # For short coats, add hip coordination
-        if coat_length == "short":
-            left_hip_group = coat_obj.vertex_groups.new(name="Bundle_Left_Hip")
-            right_hip_group = coat_obj.vertex_groups.new(name="Bundle_Right_Hip")
-
-        # Combined group for cloth pinning
-        combined_anchors_group = coat_obj.vertex_groups.new(name="Coat_Combined_Anchors")
-
-        # Calculate sphere radii for bundle integration
-        shoulder_sphere_radius = left_shoulder_radius * 2.0  # Double radius for influence
-        if coat_length == "short":
-            hip_sphere_radius = left_hip_radius * 2.0
-
-        # =========================================================================
-        # APPLY SHOULDER BUNDLE VERTEX WEIGHTS USING NEW SYSTEM
-        # =========================================================================
-        if coat_length == "short":
-            # SHORT COAT: Shoulders + Hips for twisting motion
-            script_log("DEBUG: Applying SHORT COAT shoulder weights (shared influence with hips)...")
-
-            # Apply left shoulder weights
-            for i, vertex in enumerate(coat_obj.data.vertices):
-                vert_pos = coat_obj.matrix_world @ vertex.co
-                distance = (vert_pos - left_shoulder_center).length
-
-                if distance <= shoulder_sphere_radius:
-                    weight = 1.0 - (distance / shoulder_sphere_radius)
-                    weight = weight * weight  # Quadratic falloff
-
-                    # For short coats, reduce shoulder influence in lower areas to share with hips
-                    vert_local = coat_obj.matrix_world.inverted() @ vert_pos
-                    if vert_local.z < -coat_height * 0.4:  # Lower 40% of coat
-                        weight *= 0.3  # Reduced shoulder influence near hips
-
-                    if weight > 0.1:
-                        left_shoulder_group.add([i], weight, 'REPLACE')
-                        combined_anchors_group.add([i], weight, 'REPLACE')
-
-            # Apply right shoulder weights
-            for i, vertex in enumerate(coat_obj.data.vertices):
-                vert_pos = coat_obj.matrix_world @ vertex.co
-                distance = (vert_pos - right_shoulder_center).length
-
-                if distance <= shoulder_sphere_radius:
-                    weight = 1.0 - (distance / shoulder_sphere_radius)
-                    weight = weight * weight
-
-                    vert_local = coat_obj.matrix_world.inverted() @ vert_pos
-                    if vert_local.z < -coat_height * 0.4:
-                        weight *= 0.3
-
-                    if weight > 0.1:
-                        right_shoulder_group.add([i], weight, 'REPLACE')
-                        combined_anchors_group.add([i], weight, 'REPLACE')
-
+def create_coat(garment_name, shoulder_position, chest_position, waist_position,
+                coat_length, coat_width, coat_resolution):
+    """Create coat with dynamic vertex weights that follow control points during animation"""
+
+    # Create coat mesh (tapered cylinder for coat shape)
+    bpy.ops.mesh.primitive_cylinder_add(vertices=coat_resolution, radius=coat_width, depth=coat_length)
+    coat_obj = bpy.context.active_object
+    coat_obj.name = f"{garment_name}_coat"
+    coat_obj.location = shoulder_position
+
+    # Apply slight taper to make it more coat-like (top narrower than bottom)
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.transform.resize(value=(1.0, 1.0, 1.2))  # Slightly longer in Z
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # Get all control point centers from two-empties system
+    control_points = {
+        'left_shoulder': get_bundle_center("left_shoulder"),
+        'right_shoulder': get_bundle_center("right_shoulder"),
+        'spine_chest': get_bundle_center("spine_chest"),
+        'spine_waist': get_bundle_center("spine_waist")
+    }
+
+    # Get radii with garment-specific adjustments
+    radii = {
+        'left_shoulder': get_bundle_radius("left_shoulder"),
+        'right_shoulder': get_bundle_radius("right_shoulder"),
+        'spine_chest': get_bundle_radius("spine_chest") * 1.3,  # Expanded for chest area
+        'spine_waist': get_bundle_radius("spine_waist") * 1.2  # Expanded for waist area
+    }
+
+    # Initialize vertex groups and store vertex/weight data for dynamic setup
+    vertex_data = {}  # Store which vertices get which weights for dynamic setup
+    for point_name in control_points.keys():
+        vg = coat_obj.vertex_groups.new(name=point_name)
+        vertex_data[point_name] = []  # Will store (vertex_index, weight) tuples
+
+    # Apply initial vertex group weighting AND collect data for dynamic setup
+    mesh = coat_obj.data
+    for vert in mesh.vertices:
+        vert_co = coat_obj.matrix_world @ vert.co
+        vert_height = vert_co.z - shoulder_position[2]  # Relative to shoulders
+
+        for point_name, center in control_points.items():
+            dist = (vert_co - center).length
+            max_radius = radii[point_name]
+
+            if dist <= max_radius:
+                # Base spherical weight
+                base_weight = 1.0 - (dist / max_radius)
+
+                # Height-based modulation - PRESERVING ALL YOUR EXISTING COAT LOGIC
+                if 'shoulder' in point_name:
+                    # Shoulders influence top section (collar and shoulder area)
+                    height_factor = max(0.0, 1.0 - (abs(vert_height) / (coat_length * 0.3)))
+                    final_weight = base_weight * height_factor
+                    # Shoulder-specific: enhance influence near armholes
+                    if abs(vert_co.x - center.x) < max_radius * 0.5:  # Near shoulder joint
+                        final_weight *= 1.2
+
+                elif 'chest' in point_name:
+                    # Chest influences upper-mid section (main body of coat)
+                    chest_zone = abs(vert_height + coat_length * 0.2)  # Center around chest height
+                    height_factor = max(0.0, 1.0 - (chest_zone / (coat_length * 0.4)))
+                    final_weight = base_weight * height_factor
+                    # Chest-specific: maintain strong central influence
+                    if abs(vert_co.x) < coat_width * 0.3:  # Central front/back
+                        final_weight *= 1.1
+
+                else:  # waist
+                    # Waist influences lower section (coat hem area)
+                    waist_zone = max(0.0, vert_height + coat_length * 0.6)  # Below waist
+                    height_factor = max(0.0, 1.0 - (waist_zone / (coat_length * 0.4)))
+                    final_weight = base_weight * height_factor
+                    # Waist-specific: reduce influence on very bottom edge
+                    if vert_height < -coat_length * 0.8:  # Bottom 20%
+                        final_weight *= 0.7
+
+                # Apply minimum weight threshold and store if significant
+                if final_weight > 0.01:
+                    # Set initial static weight
+                    coat_obj.vertex_groups[point_name].add([vert.index], final_weight, 'REPLACE')
+                    # Store for dynamic setup
+                    vertex_data[point_name].append((vert.index, final_weight))
+
+    # SET UP DYNAMIC VERTEX WEIGHTS - NEW FUNCTIONALITY
+    script_log("Setting up dynamic vertex weights for coat...")
+    drivers_created = 0
+    for point_name, vertices_weights in vertex_data.items():
+        if vertices_weights:  # Only if we have vertices for this control point
+            vertex_indices = [vw[0] for vw in vertices_weights]
+            initial_weights = [vw[1] for vw in vertices_weights]
+
+            script_log(f"Setting up {len(vertex_indices)} dynamic vertices for {point_name}")
+            setup_dynamic_vertex_weights(coat_obj, point_name, vertex_indices, initial_weights)
+            drivers_created += len(vertex_indices)
         else:
-            # LONG COAT: 100% shoulder influence for free draping
-            script_log("DEBUG: Applying LONG COAT shoulder weights (100% influence)...")
+            script_log(f"No vertices found for {point_name}, skipping dynamic setup")
 
-            # Apply left shoulder weights - FULL INFLUENCE
-            for i, vertex in enumerate(coat_obj.data.vertices):
-                vert_pos = coat_obj.matrix_world @ vertex.co
-                distance = (vert_pos - left_shoulder_center).length
+    script_log(f"Total dynamic drivers created for coat: {drivers_created}")
 
-                if distance <= shoulder_sphere_radius:
-                    weight = 1.0 - (distance / shoulder_sphere_radius)
-                    weight = weight * weight
+    # Setup cloth simulation - PRESERVING YOUR EXISTING WOOL COAT SETUP
+    cloth_mod = coat_obj.modifiers.new(name="Cloth", type='CLOTH')
+    cloth_mod.settings.quality = 7  # Higher quality for coat drape
+    cloth_mod.settings.time_scale = 1.0
+    cloth_mod.settings.mass = 0.4  # Wool weight - heavier than light fabrics
+    cloth_mod.settings.tension_stiffness = 20.0  # Wool has good tension resistance
+    cloth_mod.settings.compression_stiffness = 12.0  # Moderate compression
+    cloth_mod.settings.shear_stiffness = 8.0  # Wool shear resistance
+    cloth_mod.settings.bending_stiffness = 5.0  # Some stiffness for coat structure
 
-                    # 100% INFLUENCE THROUGHOUT LONG COAT
-                    # No reduction based on position - coat hangs entirely from shoulders
+    # Wool-specific damping
+    cloth_mod.settings.air_damping = 2.0
+    cloth_mod.settings.voxel_cell_size = 0.1
 
-                    if weight > 0.1:
-                        left_shoulder_group.add([i], weight, 'REPLACE')
-                        combined_anchors_group.add([i], weight, 'REPLACE')
+    # Add collision modifier
+    coll_mod = coat_obj.modifiers.new(name="Collision", type='COLLISION')
 
-            # Apply right shoulder weights - FULL INFLUENCE
-            for i, vertex in enumerate(coat_obj.data.vertices):
-                vert_pos = coat_obj.matrix_world @ vertex.co
-                distance = (vert_pos - right_shoulder_center).length
+    # Enhanced collision settings for coat
+    cloth_mod.collision_settings.collision_quality = 6
+    cloth_mod.collision_settings.distance_min = 0.005
+    cloth_mod.collision_settings.impulse_clamp = 0.5
 
-                if distance <= shoulder_sphere_radius:
-                    weight = 1.0 - (distance / shoulder_sphere_radius)
-                    weight = weight * weight
+    # Add subdivision surface for better coat drape and deformation
+    subdiv_mod = coat_obj.modifiers.new(name="Subdivision", type='SUBSURF')
+    subdiv_mod.levels = 2
+    subdiv_mod.render_levels = 3
 
-                    # 100% INFLUENCE THROUGHOUT LONG COAT
+    # Add edge split modifier to maintain sharp edges where needed
+    edge_split_mod = coat_obj.modifiers.new(name="EdgeSplit", type='EDGE_SPLIT')
+    edge_split_mod.split_angle = 1.222  # ~70 degrees
 
-                    if weight > 0.1:
-                        right_shoulder_group.add([i], weight, 'REPLACE')
-                        combined_anchors_group.add([i], weight, 'REPLACE')
+    # Smooth shading for better appearance
+    bpy.ops.object.shade_smooth()
 
-        # =========================================================================
-        # APPLY HIP BUNDLE VERTEX WEIGHTS (SHORT COATS ONLY) USING NEW SYSTEM
-        # =========================================================================
-        if coat_length == "short":
-            script_log("DEBUG: Applying hip coordination for short coat twisting...")
+    script_log(f"Coat '{coat_obj.name}' creation with dynamic weights complete!")
+    script_log(f"Total vertices: {len(mesh.vertices)}")
+    script_log(f"Vertex groups created: {[vg.name for vg in coat_obj.vertex_groups]}")
+    script_log(f"Coat dimensions: length={coat_length}, width={coat_width}")
 
-            # Apply left hip weights
-            for i, vertex in enumerate(coat_obj.data.vertices):
-                vert_pos = coat_obj.matrix_world @ vertex.co
-                distance = (vert_pos - left_hip_center).length
-
-                if distance <= hip_sphere_radius:
-                    weight = 1.0 - (distance / hip_sphere_radius)
-                    weight = weight * weight
-
-                    # Hip influence primarily in lower coat area
-                    vert_local = coat_obj.matrix_world.inverted() @ vert_pos
-                    if vert_local.z > -coat_height * 0.3:  # Upper 70% of coat
-                        weight *= 0.2  # Reduced hip influence near shoulders
-
-                    if weight > 0.1:
-                        left_hip_group.add([i], weight, 'REPLACE')
-                        combined_anchors_group.add([i], weight, 'REPLACE')
-
-            # Apply right hip weights
-            for i, vertex in enumerate(coat_obj.data.vertices):
-                vert_pos = coat_obj.matrix_world @ vertex.co
-                distance = (vert_pos - right_hip_center).length
-
-                if distance <= hip_sphere_radius:
-                    weight = 1.0 - (distance / hip_sphere_radius)
-                    weight = weight * weight
-
-                    vert_local = coat_obj.matrix_world.inverted() @ vert_pos
-                    if vert_local.z > -coat_height * 0.3:
-                        weight *= 0.2
-
-                    if weight > 0.1:
-                        right_hip_group.add([i], weight, 'REPLACE')
-                        combined_anchors_group.add([i], weight, 'REPLACE')
-
-        # =========================================================================
-        # STEP 8: ADD ARMATURE MODIFIER
-        # =========================================================================
-        script_log("DEBUG: Adding armature modifier...")
-
-        # Add armature modifier
-        armature_mod = coat_obj.modifiers.new(name="Armature", type='ARMATURE')
-        armature_mod.object = armature_obj
-        armature_mod.use_vertex_groups = True
-
-        # =========================================================================
-        # STEP 9: ADD CLOTH SIMULATION WITH SIMPLE COLLISIONS
-        # =========================================================================
-        script_log("DEBUG: Adding cloth simulation with simple collisions...")
-        cloth_config = garment_configs.get("cloth_settings", {})
-
-        if cloth_config.get("enabled", True):
-            cloth_mod = coat_obj.modifiers.new(name="Cloth", type='CLOTH')
-
-            # Apply cloth settings from config
-            cloth_mod.settings.quality = cloth_config.get("quality", 12)
-            cloth_mod.settings.mass = cloth_config.get("mass", 0.3)
-            cloth_mod.settings.tension_stiffness = cloth_config.get("tension_stiffness", 8.0)
-            cloth_mod.settings.compression_stiffness = cloth_config.get("compression_stiffness", 7.0)
-            cloth_mod.settings.shear_stiffness = cloth_config.get("shear_stiffness", 5.0)
-            cloth_mod.settings.bending_stiffness = cloth_config.get("bending_stiffness", 0.8)
-            cloth_mod.settings.air_damping = cloth_config.get("air_damping", 0.8)
-            cloth_mod.settings.time_scale = cloth_config.get("time_scale", 1.0)
-
-            # SIMPLE COLLISIONS - COAT WILL INTERACT WITH PANTS AUTOMATICALLY
-            cloth_mod.collision_settings.use_collision = True
-            cloth_mod.collision_settings.collision_quality = cloth_config.get("collision_quality", 6)
-            cloth_mod.collision_settings.distance_min = cloth_config.get("external_distance_min", 0.005)
-
-            # Self-collision for coat fabric
-            cloth_mod.collision_settings.use_self_collision = True
-            cloth_mod.collision_settings.self_distance_min = cloth_config.get("self_distance_min", 0.002)
-
-            # PIN ENTIRE COAT TO SHOULDERS (100% influence as requested)
-            cloth_mod.settings.vertex_group_mass = "Coat_Combined_Anchors"
-
-            script_log("✓ Coat cloth: 100% shoulder pinning + simple collisions (will interact with pants)")
-        else:
-            script_log("DEBUG: Cloth simulation disabled for coat")
-
-        # =========================================================================
-        # STEP 10: ADD MATERIALS
-        # =========================================================================
-        script_log("DEBUG: Adding coat materials...")
-
-        apply_material_from_config(coat_obj, "coat_torso", fallback_color=(0.1, 0.3, 0.8, 1.0))
-
-        # =========================================================================
-        # STEP 11: SET MODIFIER ORDER (NO SUBDIVISION)
-        # =========================================================================
-        script_log("DEBUG: Setting modifier order (no subdivision)...")
-
-        bpy.context.view_layer.objects.active = coat_obj
-        modifiers = coat_obj.modifiers
-
-        # Remove Subdivision modifier if it exists
-        if "Subdivision" in modifiers:
-            modifiers.remove(modifiers["Subdivision"])
-            script_log("✓ Removed Subdivision modifier - using manual geometry control")
-
-        # Build correct order based on which modifiers are present
-        correct_order = ["Armature"]
-        if cloth_config.get("enabled", True):
-            correct_order.append("Cloth")
-
-        for mod_name in correct_order:
-            mod_index = modifiers.find(mod_name)
-            if mod_index >= 0:
-                while mod_index > correct_order.index(mod_name):
-                    bpy.ops.object.modifier_move_up(modifier=mod_name)
-                    mod_index -= 1
-
-        # =========================================================================
-        # STEP 12: FINAL VERIFICATION
-        # =========================================================================
-        bpy.context.view_layer.update()
-
-        script_log(f"=== COAT TORSO CREATION COMPLETE (NEW VERTEX BUNDLE SYSTEM) ===")
-        script_log(f"✓ Coat type: {coat_length}")
-        script_log(f"✓ Height: {coat_height:.3f}")
-        script_log(f"✓ Shoulder width: {shoulder_width:.3f}")
-        script_log(f"✓ Torso radius: {torso_radius}")
-        script_log(f"✓ Front split: {'CREATED' if coat_length == 'long' else 'NOT APPLIED'}")
-        script_log(f"✓ Cloth simulation: {'ENABLED' if cloth_config.get('enabled', True) else 'DISABLED'}")
-        script_log(f"✓ NEW VERTEX BUNDLE SYSTEM: Using CTRL_LEFT_SHOULDER, CTRL_RIGHT_SHOULDER")
-        if coat_length == "short":
-            script_log(f"✓ NEW VERTEX BUNDLE SYSTEM: Using CTRL_LEFT_HIP, CTRL_RIGHT_HIP")
-        script_log(f"✓ Modifier order: Armature → Cloth")
-
-        return coat_obj
-
-    except Exception as e:
-        script_log(f"ERROR creating coat: {e}")
-        import traceback
-        script_log(f"Traceback: {traceback.format_exc()}")
-        bpy.ops.object.mode_set(mode='OBJECT')
-        return None
+    return coat_obj
 
 ##########################################################################################
 
