@@ -3271,7 +3271,7 @@ def create_boot(armature_obj, figure_name, garment_config, global_cloth_settings
 
 ##########################################################################################
 
-def create_pants(armature_obj, figure_name, garment_config, global_cloth_settings, side="left"):
+def create_pants(armature_obj, figure_name, side="left"):
     """Create continuous pants with coordinated vertex bundles for natural joint coverage using two-empties system"""
     script_log(f"Creating continuous {side} pants with coordinated vertex bundles...")
 
@@ -3378,19 +3378,19 @@ def create_pants(armature_obj, figure_name, garment_config, global_cloth_setting
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # Get pants dimensions from config
-        diameter_hip = garment_config.get("diameter_hip", 0.18)
-        diameter_knee = garment_config.get("diameter_knee", 0.14)
-        diameter_ankle = garment_config.get("diameter_ankle", 0.12)
-        segments = garment_config.get("segments", 32)
+        diameter_hip = garment_configs.get("diameter_hip", 0.18)
+        diameter_knee = garment_configs.get("diameter_knee", 0.14)
+        diameter_ankle = garment_configs.get("diameter_ankle", 0.12)
+        segments = garment_configs.get("segments", 32)
 
         # Get artist-controlled settings
-        subdivision_config = garment_config.get("subdivision", {})
+        subdivision_config = garment_configs.get("subdivision", {})
         manual_cuts = subdivision_config.get("manual_cuts", 2)
         subdiv_levels = subdivision_config.get("subdiv_levels", 2)
         min_rings = subdivision_config.get("min_rings", 24)
         rings_per_meter = subdivision_config.get("rings_per_meter", 50)
 
-        weighting_config = garment_config.get("vertex_weighting", {})
+        weighting_config = garment_configs.get("vertex_weighting", {})
         falloff_type = weighting_config.get("elbow_sphere_falloff", "quadratic")
         min_weight_threshold = weighting_config.get("min_weight_threshold", 0.05)
         sphere_influence_scale = weighting_config.get("sphere_influence_scale", 2.0)
@@ -3482,13 +3482,13 @@ def create_pants(armature_obj, figure_name, garment_config, global_cloth_setting
 
         # Get control point names for the two-empties system
         if side == "left":
-            hip_cp_name = "left_hip"
-            knee_cp_name = "left_knee"
-            ankle_cp_name = "left_ankle"
+            hip_cp_name = "CTRL_LEFT_HIP"
+            knee_cp_name = "CTRL_LEFT_HIP"
+            ankle_cp_name = "CTRL_LEFT_HEEL"
         else:
-            hip_cp_name = "right_hip"
-            knee_cp_name = "right_knee"
-            ankle_cp_name = "right_ankle"
+            hip_cp_name = "CTRL_RIGHT_HIP"
+            knee_cp_name = "CTRL_RIGHT_HIP"
+            ankle_cp_name = "CTRL_RIGHT_HEEL"
 
         # Get vertex bundle centers and radii from two-empties system
         hip_center = get_bundle_center(hip_cp_name)
@@ -3602,7 +3602,7 @@ def create_pants(armature_obj, figure_name, garment_config, global_cloth_setting
         script_log(f"✓ Created {side}_Pants_Combined_Anchors with weights from two-empties system")
 
         # TARGETED CLOTH SIMULATION WITH SIMPLE COLLISIONS
-        cloth_config = garment_config.get("cloth_settings", {})
+        cloth_config = garment_configs.get("cloth_settings", {})
         if cloth_config.get("enabled", True):
             script_log(f"DEBUG: Adding cloth simulation for {side} pants (simple collisions)...")
             cloth_mod = pants_obj.modifiers.new(name="Cloth", type='CLOTH')
@@ -3677,8 +3677,7 @@ def create_pants(armature_obj, figure_name, garment_config, global_cloth_setting
         script_log(f"✓ Added armature modifier with vertex group deformation")
 
         # Add material
-        apply_material_from_config(pants_obj, f"{side}_pants}", material_name=f"Pants_{side]_Material",
-                                   fallback_color=(0.9, 0.9, 0.9, 1.0))
+        apply_material_from_config(pants_obj, f"{side}_pants", fallback_color=(0.9, 0.9, 0.9, 1.0))
 
         # SET PROPER MODIFIER ORDER
         script_log(f"DEBUG: Setting proper modifier order for {side} pants...")
@@ -4689,150 +4688,6 @@ def create_mitten(armature_obj, figure_name, garment_config, global_cloth_settin
 
 ##########################################################################################
 
-def create_cloth_garments(armature_obj, figure_name):
-    """Create coat with dynamic vertex weights that follow control points during animation"""
-
-    # Create coat mesh (tapered cylinder for coat shape)
-    bpy.ops.mesh.primitive_cylinder_add(vertices=coat_resolution, radius=coat_width, depth=coat_length)
-    coat_obj = bpy.context.active_object
-    coat_obj.name = f"{garment_name}_coat"
-    coat_obj.location = shoulder_position
-
-    # Apply slight taper to make it more coat-like (top narrower than bottom)
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.transform.resize(value=(1.0, 1.0, 1.2))  # Slightly longer in Z
-    bpy.ops.object.mode_set(mode='OBJECT')
-
-    # Get all control point centers from two-empties system
-    control_points = {
-        'left_shoulder': get_bundle_center("left_shoulder"),
-        'right_shoulder': get_bundle_center("right_shoulder"),
-        'spine_chest': get_bundle_center("spine_chest"),
-        'spine_waist': get_bundle_center("spine_waist")
-    }
-
-    # Get radii with garment-specific adjustments
-    radii = {
-        'left_shoulder': get_bundle_radius("left_shoulder"),
-        'right_shoulder': get_bundle_radius("right_shoulder"),
-        'spine_chest': get_bundle_radius("spine_chest") * 1.3,  # Expanded for chest area
-        'spine_waist': get_bundle_radius("spine_waist") * 1.2  # Expanded for waist area
-    }
-
-    # Initialize vertex groups and store vertex/weight data for dynamic setup
-    vertex_data = {}  # Store which vertices get which weights for dynamic setup
-    for point_name in control_points.keys():
-        vg = coat_obj.vertex_groups.new(name=point_name)
-        vertex_data[point_name] = []  # Will store (vertex_index, weight) tuples
-
-    # Apply initial vertex group weighting AND collect data for dynamic setup
-    mesh = coat_obj.data
-    for vert in mesh.vertices:
-        vert_co = coat_obj.matrix_world @ vert.co
-        vert_height = vert_co.z - shoulder_position[2]  # Relative to shoulders
-
-        for point_name, center in control_points.items():
-            dist = (vert_co - center).length
-            max_radius = radii[point_name]
-
-            if dist <= max_radius:
-                # Base spherical weight
-                base_weight = 1.0 - (dist / max_radius)
-
-                # Height-based modulation - PRESERVING ALL YOUR EXISTING COAT LOGIC
-                if 'shoulder' in point_name:
-                    # Shoulders influence top section (collar and shoulder area)
-                    height_factor = max(0.0, 1.0 - (abs(vert_height) / (coat_length * 0.3)))
-                    final_weight = base_weight * height_factor
-                    # Shoulder-specific: enhance influence near armholes
-                    if abs(vert_co.x - center.x) < max_radius * 0.5:  # Near shoulder joint
-                        final_weight *= 1.2
-
-                elif 'chest' in point_name:
-                    # Chest influences upper-mid section (main body of coat)
-                    chest_zone = abs(vert_height + coat_length * 0.2)  # Center around chest height
-                    height_factor = max(0.0, 1.0 - (chest_zone / (coat_length * 0.4)))
-                    final_weight = base_weight * height_factor
-                    # Chest-specific: maintain strong central influence
-                    if abs(vert_co.x) < coat_width * 0.3:  # Central front/back
-                        final_weight *= 1.1
-
-                else:  # waist
-                    # Waist influences lower section (coat hem area)
-                    waist_zone = max(0.0, vert_height + coat_length * 0.6)  # Below waist
-                    height_factor = max(0.0, 1.0 - (waist_zone / (coat_length * 0.4)))
-                    final_weight = base_weight * height_factor
-                    # Waist-specific: reduce influence on very bottom edge
-                    if vert_height < -coat_length * 0.8:  # Bottom 20%
-                        final_weight *= 0.7
-
-                # Apply minimum weight threshold and store if significant
-                if final_weight > 0.01:
-                    # Set initial static weight
-                    coat_obj.vertex_groups[point_name].add([vert.index], final_weight, 'REPLACE')
-                    # Store for dynamic setup
-                    vertex_data[point_name].append((vert.index, final_weight))
-
-    # SET UP DYNAMIC VERTEX WEIGHTS - NEW FUNCTIONALITY
-    script_log("Setting up dynamic vertex weights for coat...")
-    drivers_created = 0
-    for point_name, vertices_weights in vertex_data.items():
-        if vertices_weights:  # Only if we have vertices for this control point
-            vertex_indices = [vw[0] for vw in vertices_weights]
-            initial_weights = [vw[1] for vw in vertices_weights]
-
-            script_log(f"Setting up {len(vertex_indices)} dynamic vertices for {point_name}")
-            setup_dynamic_vertex_weights(coat_obj, point_name, vertex_indices, initial_weights)
-            drivers_created += len(vertex_indices)
-        else:
-            script_log(f"No vertices found for {point_name}, skipping dynamic setup")
-
-    script_log(f"Total dynamic drivers created for coat: {drivers_created}")
-
-    # Setup cloth simulation - PRESERVING YOUR EXISTING WOOL COAT SETUP
-    cloth_mod = coat_obj.modifiers.new(name="Cloth", type='CLOTH')
-    cloth_mod.settings.quality = 7  # Higher quality for coat drape
-    cloth_mod.settings.time_scale = 1.0
-    cloth_mod.settings.mass = 0.4  # Wool weight - heavier than light fabrics
-    cloth_mod.settings.tension_stiffness = 20.0  # Wool has good tension resistance
-    cloth_mod.settings.compression_stiffness = 12.0  # Moderate compression
-    cloth_mod.settings.shear_stiffness = 8.0  # Wool shear resistance
-    cloth_mod.settings.bending_stiffness = 5.0  # Some stiffness for coat structure
-
-    # Wool-specific damping
-    cloth_mod.settings.air_damping = 2.0
-    cloth_mod.settings.voxel_cell_size = 0.1
-
-    # Add collision modifier
-    coll_mod = coat_obj.modifiers.new(name="Collision", type='COLLISION')
-
-    # Enhanced collision settings for coat
-    cloth_mod.collision_settings.collision_quality = 6
-    cloth_mod.collision_settings.distance_min = 0.005
-    cloth_mod.collision_settings.impulse_clamp = 0.5
-
-    # Add subdivision surface for better coat drape and deformation
-    subdiv_mod = coat_obj.modifiers.new(name="Subdivision", type='SUBSURF')
-    subdiv_mod.levels = 2
-    subdiv_mod.render_levels = 3
-
-    # Add edge split modifier to maintain sharp edges where needed
-    edge_split_mod = coat_obj.modifiers.new(name="EdgeSplit", type='EDGE_SPLIT')
-    edge_split_mod.split_angle = 1.222  # ~70 degrees
-
-    # Smooth shading for better appearance
-    bpy.ops.object.shade_smooth()
-
-    script_log(f"Coat '{coat_obj.name}' creation with dynamic weights complete!")
-    script_log(f"Total vertices: {len(mesh.vertices)}")
-    script_log(f"Vertex groups created: {[vg.name for vg in coat_obj.vertex_groups]}")
-    script_log(f"Coat dimensions: length={coat_length}, width={coat_width}")
-
-    return coat_obj
-
-##########################################################################################
-
 def create_sleeve(armature_obj, figure_name, garment_config, global_cloth_settings, side="left"):
     """Create continuous sleeve with spherical pinning zone weighting using new vertex bundles system"""
     script_log(f"Creating continuous {side} sleeve with spherical pinning zones...")
@@ -5583,29 +5438,6 @@ def add_dynamic_weighting_to_garment(garment_obj, control_point_names, bone_name
     script_log(f"✓ Added dynamic weighting to {garment_obj.name}")
     script_log(f"  - Control points: {control_point_names}")
     script_log(f"  - Bone groups: {bone_names}")
-
-
-def create_pants_with_dynamic_system(side="left", config=None):
-    """
-    Example of pants creation using the dynamic vertex system
-    """
-    # Create pants mesh as usual...
-    pants_obj = create_cylinder_based_pants(side, config)
-
-    # Define vertex bundle mappings
-    vertex_bundle_mapping = {
-        "hip_bundle": f"CTRL_{side.upper()}_HIP",
-        "knee_bundle": f"CTRL_{side.upper()}_KNEE",
-        "ankle_bundle": f"CTRL_{side.upper()}_HEEL"
-    }
-
-    # Apply dynamic vertex systems
-    setup_dynamic_vertex_weights(pants_obj, vertex_bundle_mapping)
-    setup_driver_based_vertex_weights(pants_obj, vertex_bundle_mapping)
-    parent_garment_to_bundle_empties(pants_obj, vertex_bundle_mapping)
-
-    return pants_obj
-
 
 def make_vertex_all_bundles(armature_obj):
     """Create vertex bundle systems for all control points"""
