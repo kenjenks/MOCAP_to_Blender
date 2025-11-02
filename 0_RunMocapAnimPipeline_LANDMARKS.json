@@ -1,0 +1,146 @@
+{
+    "mediapipe_version": "0.10.21",
+    "expected_landmark_count": 32,
+    "landmarks": {
+        "NOSE": {
+            "index": 0,
+            "neutral_pose": {"x": 0.0, "y": 0.0, "z": 1.6},
+            "motion_detection": true,
+            "key_joint": true,
+            "height_calculation": "top"
+        },
+        "HEAD_TOP": {
+            "index": 10,
+            "neutral_pose": {"x": 0.0, "y": 0.0, "z": 1.8},
+            "motion_detection": true,
+            "key_joint": true,
+            "height_calculation": "top"
+        },
+        "LEFT_SHOULDER": {
+            "index": 11,
+            "neutral_pose": {"x": 0.2, "y": 0.0, "z": 1.4},
+            "motion_detection": true,
+            "key_joint": true,
+            "height_calculation": null
+        },
+        "RIGHT_SHOULDER": {
+            "index": 12,
+            "neutral_pose": {"x": -0.2, "y": 0.0, "z": 1.4},
+            "motion_detection": true,
+            "key_joint": true,
+            "height_calculation": null
+        },
+        "LEFT_ELBOW": {
+            "index": 13,
+            "neutral_pose": {"x": 0.4, "y": 0.0, "z": 1.4},
+            "motion_detection": false,
+            "key_joint": false,
+            "height_calculation": null
+        },
+        "RIGHT_ELBOW": {
+            "index": 14,
+            "neutral_pose": {"x": -0.4, "y": 0.0, "z": 1.4},
+            "motion_detection": false,
+            "key_joint": false,
+            "height_calculation": null
+        },
+        "LEFT_WRIST": {
+            "index": 15,
+            "neutral_pose": {"x": 0.6, "y": 0.0, "z": 1.4},
+            "motion_detection": true,
+            "key_joint": false,
+            "height_calculation": null
+        },
+        "RIGHT_WRIST": {
+            "index": 16,
+            "neutral_pose": {"x": -0.6, "y": 0.0, "z": 1.4},
+            "motion_detection": true,
+            "key_joint": false,
+            "height_calculation": null
+        },
+        "LEFT_INDEX": {
+            "index": 19,
+            "neutral_pose": {"x": 0.7, "y": 0.0, "z": 1.4},
+            "motion_detection": false,
+            "key_joint": false,
+            "height_calculation": null
+        },
+        "RIGHT_INDEX": {
+            "index": 20,
+            "neutral_pose": {"x": -0.7, "y": 0.0, "z": 1.4},
+            "motion_detection": false,
+            "key_joint": false,
+            "height_calculation": null
+        },
+        "LEFT_HIP": {
+            "index": 23,
+            "neutral_pose": {"x": 0.1, "y": 0.0, "z": 1.0},
+            "motion_detection": true,
+            "key_joint": true,
+            "height_calculation": null
+        },
+        "RIGHT_HIP": {
+            "index": 24,
+            "neutral_pose": {"x": -0.1, "y": 0.0, "z": 1.0},
+            "motion_detection": true,
+            "key_joint": true,
+            "height_calculation": null
+        },
+        "LEFT_KNEE": {
+            "index": 25,
+            "neutral_pose": {"x": 0.1, "y": 0.0, "z": 0.5},
+            "motion_detection": false,
+            "key_joint": false,
+            "height_calculation": null
+        },
+        "RIGHT_KNEE": {
+            "index": 26,
+            "neutral_pose": {"x": -0.1, "y": 0.0, "z": 0.5},
+            "motion_detection": false,
+            "key_joint": false,
+            "height_calculation": null
+        },
+        "LEFT_ANKLE": {
+            "index": 27,
+            "neutral_pose": {"x": 0.1, "y": 0.0, "z": 0.1},
+            "motion_detection": false,
+            "key_joint": false,
+            "height_calculation": null
+        },
+        "RIGHT_ANKLE": {
+            "index": 28,
+            "neutral_pose": {"x": -0.1, "y": 0.0, "z": 0.1},
+            "motion_detection": false,
+            "key_joint": false,
+            "height_calculation": null
+        },
+        "LEFT_HEEL": {
+            "index": 29,
+            "neutral_pose": {"x": 0.1, "y": 0.0, "z": 0.05},
+            "motion_detection": false,
+            "key_joint": false,
+            "height_calculation": "bottom"
+        },
+        "RIGHT_HEEL": {
+            "index": 30,
+            "neutral_pose": {"x": -0.1, "y": 0.0, "z": 0.05},
+            "motion_detection": false,
+            "key_joint": false,
+            "height_calculation": "bottom"
+        },
+        "LEFT_FOOT_INDEX": {
+            "index": 31,
+            "neutral_pose": {"x": 0.1, "y": 0.1, "z": 0.0},
+            "motion_detection": true,
+            "key_joint": false,
+            "height_calculation": "bottom"
+        },
+        "RIGHT_FOOT_INDEX": {
+            "index": 32,
+            "neutral_pose": {"x": -0.1, "y": 0.1, "z": 0.0},
+            "motion_detection": true,
+            "key_joint": false,
+            "height_calculation": "bottom"
+        }
+    }
+}

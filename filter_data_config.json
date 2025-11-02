@@ -1,0 +1,53 @@
+{
+    "general": {
+        "epsilon": 1e-6,
+        "log_file_path": "Log2.txt"
+    },
+    "debug_flags": {
+    },
+    "coordinate_detection": {
+        "sample_frame_count": 10,
+        "upside_down_threshold": 0.5,
+        "min_samples_required": 5,
+        "manual_override": "auto",
+        "confidence_threshold": 0.7,
+        "min_visibility_threshold": 0.5
+    },
+    "quality_weights": {
+        "joint_completeness": 0.4,
+        "avg_visibility": 0.4,
+        "visibility_ratio": 0.2
+    },
+    "validation_thresholds": {
+        "min_joints": 10,
+        "min_avg_visibility": 0.3,
+        "min_quality_score": 0.4,
+        "min_joint_visibility": 0.5,
+        "interpolation_visibility_threshold": 0.1
+    },
+    "interpolation_limits": {
+        "max_forward_extrapolation": 5,
+        "max_backward_extrapolation": 5,
+        "quality_difference_threshold": 0.3
+    },
+    "mediapipe": {
+        "expected_joint_count": 34
+    },
+    "parameters": {
+        "swap_window": 30,
+        "smoothing_radius": 3,
+        "proximity_threshold_ratio": 0.03,
+        "min_proximity_threshold": 0.01,
+        "max_proximity_threshold": 0.1,
+        "swap_persistence": 30,
+        "min_visibility": 0.3,
+        "z_score_threshold": 3.0,
+        "outlier_window": 5,
+        "max_invalid_frames": 10,
+        "confidence_decay": 0.1,
+        "height_landmarks": {
+            "top": ["LEFT_EAR", "RIGHT_EAR", "NOSE"],
+            "bottom": ["LEFT_FOOT_INDEX", "RIGHT_FOOT_INDEX", "LEFT_HEEL", "RIGHT_HEEL"]
+        }
+    }
+}

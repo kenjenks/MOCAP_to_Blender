@@ -1,0 +1,116 @@
+{
+    "general": {
+        "epsilon": 1e-6,
+        "log_file_path": "Log3.txt",
+        "desired_up_vector": [0, 0, 1],
+        "desired_forward_vector": [0, 1, 0]
+    },
+    "debug_flags": {
+        "turn_off_z_up_transformation": false,
+        "turn_off_forward_transformation": true,
+        "turn_off_shoulder_shift": true,
+        "turn_off_hip_shift": true,
+        "turn_off_biomechanical_constraints": true,
+        "turn_off_hip_heel_floor_shift": true,
+        "turn_off_depth_adjustment": false,
+        "turn_off_shoulder_stabilization": true,
+        "turn_off_head_stabilization": false
+    },
+    "shoulder_stabilization": {
+        "expected_shoulder_hip_ratio": 1.2,
+        "expected_torso_aspect_ratio": 1.4,
+        "target_vertical_offset": 0.4,
+        "correction_factor": 0.3,
+        "proportion_tolerance": 0.3,
+        "enable_shoulder_stabilization": true
+    },
+    "head_stabilization": {
+        "enable_head_stabilization": true,
+        
+        "distance_controls": {
+            "min_head_shoulder_distance": 0.15,
+            "target_head_shoulder_distance": 0.25,
+            "distance_correction_strength": 0.3
+        },
+        
+        "height_controls": {
+            "min_head_height": 0.12,
+            "target_head_height": 0.18,
+            "height_correction_strength": 0.3
+        },
+        
+        "forward_position_controls": {
+            "min_head_forward_offset": 0.06,
+            "target_head_forward_offset": 0.10,
+            "min_nose_forward_offset": 0.10,
+            "target_nose_forward_offset": 0.15,
+            "nose_forward_advantage": 0.02,
+            "forward_correction_strength": 0.3,
+            "nose_forward_priority": 0.8
+        },
+        
+        "body_plane_alignment": {
+            "max_natural_plane_distance": 0.08,
+            "plane_correction_strength": 0.2,
+            "allow_natural_nodding": true,
+            "nodding_tolerance_factor": 1.5,
+            "side_to_side_tolerance_factor": 0.8
+        },
+        
+        "proportional_corrections": {
+            "nose_correction_ratio": 0.7,
+            "other_landmarks_correction_ratio": 0.6,
+            "ear_correction_ratio": 0.5,
+            "eye_correction_ratio": 0.8
+        },
+        
+        "smoothing_controls": {
+            "correction_smoothing_factor": 0.4,
+            "history_window_size": 15,
+            "min_frames_for_trend": 5
+        }
+    },
+    "motion_detection": {
+        "feet_off_ground_threshold": 0.1,
+        "upward_velocity_threshold": 0.05,
+        "downward_velocity_threshold": -0.05,
+        "running_velocity_threshold": 0.2,
+        "walking_velocity_threshold": 0.05,
+        "state_transition_window_size": 5,
+        "jump_detection_min_frames": 10
+    },
+    "height_adjustment": {
+        "desired_height": 1.6,
+        "landing_blend_factor": 0.7,
+        "jump_trajectory_window": 5,
+        "ground_history_size": 5,
+        "z_offset_history_size": 30,
+        "polynomial_degree": 2
+    },
+    "depth_adjustment": {
+        "max_allowed_depth_ratio": 0.5,
+        "force_minimal_depth_variation": false,
+        "manual_depth_scale_factor": null,
+        "sensitivity": {
+            "depth_variation_trigger_ratio": 1.2,
+            "planar_motion_variance_ratio": 0.3,
+            "biomechanical_discrepancy_threshold": 1.1,
+            "min_scale_factor": 0.05,
+            "max_scale_factor": 1.0
+        }
+    },
+    "biomechanical_constraints": {
+        "head_roll_limit_degrees": 45.0,
+        "head_nod_limit_degrees": 45.0,
+        "head_y_translation_limit_percent": 2.0,
+        "head_roll_sensitivity": 0.5,
+        "head_nod_sensitivity": 5.0
+    },
+    "rotation": {
+        "default_rotation_matrix": [
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1]
+        ]
+    }
+}

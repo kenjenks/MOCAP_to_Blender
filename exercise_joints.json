@@ -1,0 +1,585 @@
+{
+    "metadata": {
+        "version": "3.0",
+        "description": "Comprehensive MediaPipe to Blender DEF-bone mapping for full body data generation. Driving joints for 4D_magic are explicitly marked. Updated DEFORM_BONE and reference_DEFORM_BONE_WORLD_LOCATION for mouth corners. Disabled hip movement.",
+        "ARMATURE_NAME": "RIG-rain"
+    },
+    "NOSE": {
+        "IK_CONTROLLER": "FK-Head",
+        "DEFORM_BONE": "DEF-Head",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": true,
+        "DRIVES_ROTATION": true,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.0,
+            -0.0164,
+            1.3921
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "LEFT_EYE_INNER": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Eye.L",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.0468,
+            -0.0895,
+            1.4736
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "LEFT_EYE": {
+        "IK_CONTROLLER": "TGT-Eye.L",
+        "DEFORM_BONE": "DEF-Eye.L",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": true,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.0468,
+            -0.0895,
+            1.4736
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "LEFT_EYE_OUTER": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Eye.L",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.0468,
+            -0.0895,
+            1.4736
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "RIGHT_EYE_INNER": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Eye.R",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            -0.0468,
+            -0.0895,
+            1.4736
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "RIGHT_EYE": {
+        "IK_CONTROLLER": "TGT-Eye.R",
+        "DEFORM_BONE": "DEF-Eye.R",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": true,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            -0.0468,
+            -0.0895,
+            1.4736
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "RIGHT_EYE_OUTER": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Eye.R",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            -0.0468,
+            -0.0895,
+            1.4736
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "LEFT_EAR": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Ear_Top.L",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.0973,
+            -0.0302,
+            1.4627
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "RIGHT_EAR": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Ear_Top.R",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            -0.0973,
+            -0.0302,
+            1.4627
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "MOUTH_LEFT": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Lip_Top_Top_2.L",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.0281,
+            -0.1324,
+            1.3883
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "MOUTH_RIGHT": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Lip_Top_Top_2.R",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            -0.0281,
+            -0.1324,
+            1.3883
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "LEFT_SHOULDER": {
+        "IK_CONTROLLER": "MSTR-Chest_Parent",
+        "DEFORM_BONE": "DEF-Clavicle.L",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": true,
+        "DRIVES_ROTATION": true,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.0231,
+            -0.0234,
+            1.2487
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "RIGHT_SHOULDER": {
+        "IK_CONTROLLER": "MSTR-Chest_Parent",
+        "DEFORM_BONE": "DEF-Clavicle.R",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": true,
+        "DRIVES_ROTATION": true,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            -0.0231,
+            -0.0234,
+            1.2487
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "LEFT_ELBOW": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Forearm1.L",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.3176,
+            0.0138,
+            1.2407
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "RIGHT_ELBOW": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Forearm1.R",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            -0.3176,
+            0.0138,
+            1.2407
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "LEFT_WRIST": {
+        "IK_CONTROLLER": "IK-Hand_Parent.L",
+        "DEFORM_BONE": "DEF-Hand.L",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": true,
+        "DRIVES_ROTATION": true,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.5287641882896423,
+            -0.012543083168566227,
+            1.2312424182891846
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.5287642478942871,
+            -0.012543082237243652,
+            1.2312426567077637
+        ],
+        "test_movements_observed": {
+            "x_offset_deform_world": [
+                0.5287641882896423,
+                -0.012543083168566227,
+                1.2312424182891846
+            ],
+            "y_offset_deform_world": [
+                0.5287641882896423,
+                -0.012543083168566227,
+                1.2312424182891846
+            ],
+            "z_offset_deform_world": [
+                0.5287641882896423,
+                -0.012543083168566227,
+                1.2312424182891846
+            ]
+        }
+    },
+    "RIGHT_WRIST": {
+        "IK_CONTROLLER": "IK-Hand_Parent.R",
+        "DEFORM_BONE": "DEF-Hand.R",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": true,
+        "DRIVES_ROTATION": true,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            -0.5288,
+            -0.0125,
+            1.2312
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "LEFT_PINKY": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Pinky1.L",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.5569,
+            0.0092,
+            1.2258
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "RIGHT_PINKY": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Pinky1.R",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            -0.5569,
+            0.0092,
+            1.2258
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "LEFT_INDEX": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Index1.L",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.551,
+            -0.0325,
+            1.2286
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "RIGHT_INDEX": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Index1.R",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            -0.551,
+            -0.0325,
+            1.2286
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "LEFT_THUMB": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Thumb1.L",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.5367,
+            -0.0275,
+            1.2277
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "RIGHT_THUMB": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Thumb1.R",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            -0.5367,
+            -0.0275,
+            1.2277
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "LEFT_HIP": {
+        "IK_CONTROLLER": "MSTR-Pelvis_Parent",
+        "DEFORM_BONE": "DEF-Pelvis",
+        "DRIVE_THIS_JOINT": true,
+        "DRIVES_TRANSLATION": true,
+        "DRIVES_ROTATION": true,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.0,
+            -0.0193,
+            0.8211
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "RIGHT_HIP": {
+        "IK_CONTROLLER": "MSTR-Pelvis_Parent",
+        "DEFORM_BONE": "DEF-Pelvis",
+        "DRIVE_THIS_JOINT": true,
+        "DRIVES_TRANSLATION": true,
+        "DRIVES_ROTATION": true,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.0,
+            -0.0193,
+            0.8211
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "LEFT_KNEE": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Shin1.L",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.0756,
+            -0.0246,
+            0.4678
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "RIGHT_KNEE": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Shin1.R",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            -0.0756,
+            -0.0246,
+            0.4678
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "LEFT_ANKLE": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Foot.L",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.0657,
+            -0.0042,
+            0.0775
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "RIGHT_ANKLE": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Foot.R",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            -0.0657,
+            -0.0042,
+            0.0775
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "LEFT_HEEL": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Foot.L",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.0657,
+            -0.0042,
+            0.0775
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "RIGHT_HEEL": {
+        "IK_CONTROLLER": null,
+        "DEFORM_BONE": "DEF-Foot.R",
+        "DRIVE_THIS_JOINT": false,
+        "DRIVES_TRANSLATION": false,
+        "DRIVES_ROTATION": false,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            -0.0657,
+            -0.0042,
+            0.0775
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "LEFT_FOOT_INDEX": {
+        "IK_CONTROLLER": "MSTR-Foot_Parent.L",
+        "DEFORM_BONE": "DEF-Toe.L",
+        "DRIVE_THIS_JOINT": true,
+        "DRIVES_TRANSLATION": true,
+        "DRIVES_ROTATION": true,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            0.0689,
+            -0.1086,
+            0.0249
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    },
+    "RIGHT_FOOT_INDEX": {
+        "IK_CONTROLLER": "MSTR-Foot_Parent.R",
+        "DEFORM_BONE": "DEF-Toe.R",
+        "DRIVE_THIS_JOINT": true,
+        "DRIVES_TRANSLATION": true,
+        "DRIVES_ROTATION": true,
+        "reference_DEFORM_BONE_WORLD_LOCATION": [
+            -0.0689,
+            -0.1086,
+            0.0249
+        ],
+        "reference_IK_CONTROLLER_WORLD_LOCATION": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    }
+}

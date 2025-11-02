@@ -1,0 +1,1013 @@
+def create_kid_flesh(armature_obj, figure_name):
+    """
+    Create a vertex cloud flesh using the manual workflow approach:
+    1. Create vertices in rings
+    2. Create all edges and faces in one go
+    Updated for multi-segment spine support
+    """
+    script_log(f"=== CREATING VERTEX CLOUD FLESH ===")
+
+    try:
+        # Create vertex cloud mesh
+        mesh = bpy.data.meshes.new("Kid_Complete_Skin")
+        cloud_obj = bpy.data.objects.new("Kid_Complete_Skin", mesh)
+
+        # Use the same collection that the armature is in
+        main_collection = bpy.data.collections.get(f"{figure_name}_MainFigure")
+        if main_collection:
+            main_collection.objects.link(cloud_obj)
+            script_log(f"✓ Linking flesh mesh to existing MainFigure collection")
+        else:
+            script_log(f"ERROR: Can't find MainFigure collection for flesh mesh")
+            return None
+
+        # Store all vertices
+        all_vertices = []
+        vertex_groups = {}  # Track which bone each vertex belongs to
+
+        # Store ring information for edge and face creation
+        ring_data_by_bone = {}  # {bone_name: [ring1_data, ring2_data, ...]}
+
+        # List to store hip horizontal ring vertices for use in PART C2 and PART E
+        hip_horizontal_ring_vertices = []
+
+        def is_this_a_hip_horizontal_vertex(def_bone_name, vertex_index_in_ring):
+            """Check if this vertex should be part of the horizontal hip ring"""
+            if not def_bone_name.startswith("DEF_"):
+                return False
+
+            bone_name = def_bone_name[4:]  # Remove "DEF_" prefix
+
+            if bone_name not in ["LeftHip", "RightHip"]:
+                return False
+
+            # Get the parent_best_offset for this hip bone
+            bone_data = bone_definitions.get(bone_name, {})
+            parent_offset = bone_data.get("parent_best_offset", 0)
+
+            # Check if this vertex is at key positions around the ring
+            ring_size = 12  # Assuming consistent ring size
+            key_positions = [
+                parent_offset,  # Primary connection point
+                (parent_offset + 6) % ring_size # Opposite side
+            ]
+
+            return vertex_index_in_ring in key_positions
+
+        script_log("Generating vertex rings from bone shapes...")
+
+        # Access bones through the armature data
+        armature_data = armature_obj.data
+
+        # Check if we have multi-segment spine
+        spine_shapes = bone_definitions.get("Spine", {}).get("shapes", [])
+        num_spine_segments = len(spine_shapes)
+        has_multi_segment_spine = num_spine_segments > 1
+
+        script_log(f"Spine configuration: {num_spine_segments} shapes, multi-segment: {has_multi_segment_spine}")
+
+        # STEP 1: Create vertices in rings for each bone
+        for bone_name, bone_data in bone_definitions.items():
+            # Skip original spine bone if we have multi-segment spine
+            if bone_name == "Spine" and has_multi_segment_spine:
+                script_log(f"Skipping original Spine bone - using multi-segment spine instead")
+                continue
+
+            if "shapes" not in bone_data or not bone_data["shapes"]:
+                script_log(f"Skipping bone without shapes: {bone_name}")
+                continue
+
+            script_log(f"Creating vertex rings for bone: {bone_name}")
+
+            # Get bone data from armature
+            def_bone_name = f"DEF_{bone_name}"
+
+            bone = None
+            if def_bone_name in armature_data.bones:
+                bone = armature_data.bones[def_bone_name]
+            else:
+                script_log(f"  Bone {def_bone_name} not found in armature data, skipping")
+                continue
+
+            # Get bone data
+            bone_matrix = armature_obj.matrix_world @ bone.matrix_local
+            bone_length = (bone.tail_local - bone.head_local).length
+
+            # Store rings for this bone
+            bone_rings = []
+
+            # Create vertices for each shape ring
+            for shape_idx, shape in enumerate(bone_data["shapes"]):
+                position_along_bone = shape["position"]
+                radius = shape["radius"]
+                flatten_scale = shape["flatten_scale"]
+
+                # Calculate position along bone in local space
+                local_bone_pos = Vector((0, position_along_bone * bone_length, 0))
+
+                # Create a ring of vertices around this position
+                ring_vertex_count = 12
+                ring_vertices = []
+                ring_vertex_indices = []
+
+                for i in range(ring_vertex_count):
+                    angle = (2 * math.pi * i) / ring_vertex_count
+
+                    # Calculate vertex offset in bone's local space
+                    local_x = math.cos(angle) * radius * flatten_scale[0]
+                    local_z = math.sin(angle) * radius * flatten_scale[1]
+
+                    # Create local vertex offset
+                    local_offset = Vector((local_x, 0, local_z))
+
+                    # Transform to world space
+                    world_vertex = bone_matrix @ (local_bone_pos + local_offset)
+
+                    ring_vertices.append(world_vertex)
+                    vertex_index = len(all_vertices)
+                    all_vertices.append(world_vertex)
+                    ring_vertex_indices.append(vertex_index)
+                    vertex_groups[vertex_index] = def_bone_name
+
+                    # Check if this vertex belongs to the horizontal hip ring
+                    if is_this_a_hip_horizontal_vertex(def_bone_name, i):
+                        hip_horizontal_ring_vertices.append({
+                            'vertex_index': vertex_index,
+                            'position': world_vertex,
+                            'bone': def_bone_name,
+                            'ring_position': i
+                        })
+
+                bone_rings.append({
+                    'position': position_along_bone,
+                    'vertex_indices': ring_vertex_indices,
+                    'world_pos': bone_matrix @ local_bone_pos
+                })
+
+            ring_data_by_bone[bone_name] = bone_rings
+
+        # SPECIAL HANDLING: Create vertex rings for multi-segment spine
+        if has_multi_segment_spine:
+            script_log(f"Creating vertex rings for {num_spine_segments} spine segments...")
+
+            spine_data = bone_definitions["Spine"]
+            spine_shapes = spine_data["shapes"]
+
+            # Distribute spine shapes across spine segments
+            for segment_idx in range(num_spine_segments):
+                segment_name = f"Spine_{segment_idx + 1:02d}"
+                def_segment_name = f"DEF_{segment_name}"
+
+                # Check if this spine segment exists in armature
+                if def_segment_name not in armature_data.bones:
+                    script_log(f"  Spine segment {def_segment_name} not found in armature, skipping")
+                    continue
+
+                bone = armature_data.bones[def_segment_name]
+                bone_matrix = armature_obj.matrix_world @ bone.matrix_local
+                bone_length = (bone.tail_local - bone.head_local).length
+
+                # Store rings for this spine segment
+                segment_rings = []
+
+                # For multi-segment spine, each segment gets one ring at its midpoint
+                # This creates a continuous spine with rings at each segment junction
+                ring_position = 0.5  # Middle of each segment
+
+                # Use the corresponding shape from the original spine definition
+                shape_idx = segment_idx  # Use shape at same index as segment
+                if shape_idx < len(spine_shapes):
+                    shape = spine_shapes[shape_idx]
+                    radius = shape["radius"]
+                    flatten_scale = shape["flatten_scale"]
+
+                    # Create a ring of vertices around this position
+                    ring_vertex_count = 12
+                    ring_vertices = []
+                    ring_vertex_indices = []
+
+                    for i in range(ring_vertex_count):
+                        angle = (2 * math.pi * i) / ring_vertex_count
+
+                        # Calculate vertex offset in bone's local space
+                        local_x = math.cos(angle) * radius * flatten_scale[0]
+                        local_z = math.sin(angle) * radius * flatten_scale[1]
+
+                        # Create local vertex offset
+                        local_bone_pos = Vector((0, ring_position * bone_length, 0))
+                        local_offset = Vector((local_x, 0, local_z))
+
+                        # Transform to world space
+                        world_vertex = bone_matrix @ (local_bone_pos + local_offset)
+
+                        ring_vertices.append(world_vertex)
+                        vertex_index = len(all_vertices)
+                        all_vertices.append(world_vertex)
+                        ring_vertex_indices.append(vertex_index)
+                        vertex_groups[vertex_index] = def_segment_name
+
+                    segment_rings.append({
+                        'position': ring_position,
+                        'vertex_indices': ring_vertex_indices,
+                        'world_pos': bone_matrix @ local_bone_pos
+                    })
+
+                    ring_data_by_bone[segment_name] = segment_rings
+                    script_log(f"  Created ring for {segment_name} with {ring_vertex_count} vertices")
+                else:
+                    script_log(f"  No shape definition for spine segment {segment_idx}, using defaults")
+
+                    # Fallback: create default ring
+                    ring_vertex_count = 12
+                    ring_vertices = []
+                    ring_vertex_indices = []
+                    radius = 0.06
+                    flatten_scale = [1.0, 1.0]
+
+                    for i in range(ring_vertex_count):
+                        angle = (2 * math.pi * i) / ring_vertex_count
+                        local_x = math.cos(angle) * radius * flatten_scale[0]
+                        local_z = math.sin(angle) * radius * flatten_scale[1]
+                        local_bone_pos = Vector((0, ring_position * bone_length, 0))
+                        local_offset = Vector((local_x, 0, local_z))
+                        world_vertex = bone_matrix @ (local_bone_pos + local_offset)
+
+                        ring_vertices.append(world_vertex)
+                        vertex_index = len(all_vertices)
+                        all_vertices.append(world_vertex)
+                        ring_vertex_indices.append(vertex_index)
+                        vertex_groups[vertex_index] = def_segment_name
+
+                    segment_rings.append({
+                        'position': ring_position,
+                        'vertex_indices': ring_vertex_indices,
+                        'world_pos': bone_matrix @ local_bone_pos
+                    })
+
+                    ring_data_by_bone[segment_name] = segment_rings
+
+        # Create the initial mesh with just vertices
+        mesh.from_pydata(all_vertices, [], [])
+        mesh.update()
+
+        script_log(f"Created {len(all_vertices)} total vertices")
+
+        # STEP 2: Create ALL edges and faces in one go
+        script_log("STEP 2: Creating all edges and faces...")
+
+        # Use bmesh for direct edge and face creation
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+
+        total_edges_created = 0
+        total_faces_created = 0
+
+        # --------------------------------------------------------------------------------
+        # PART A: Create edges and faces between rings on same bone
+        # --------------------------------------------------------------------------------
+        script_log("PART A: Creating edges and faces between rings on same bone...")
+
+        for bone_name, rings in ring_data_by_bone.items():
+            if len(rings) < 2:
+                continue
+
+            sorted_rings = sorted(rings, key=lambda r: r['position'])
+
+            for i in range(len(sorted_rings) - 1):
+                current_ring = sorted_rings[i]
+                next_ring = sorted_rings[i + 1]
+
+                current_indices = current_ring['vertex_indices']
+                next_indices = next_ring['vertex_indices']
+
+                ring_size = min(len(current_indices), len(next_indices))
+
+                for j in range(ring_size):
+                    # VERTEX ORDER: v1 -> v4 -> v3 -> v2
+                    v1_idx = current_indices[j]  # Current ring, vertex j
+                    v4_idx = next_indices[j]  # Next ring, vertex j
+                    v3_idx = next_indices[(j + 1) % ring_size]  # Next ring, vertex j+1
+                    v2_idx = current_indices[(j + 1) % ring_size]  # Current ring, vertex j+1
+
+                    v1 = bm.verts[v1_idx]
+                    v2 = bm.verts[v2_idx]
+                    v3 = bm.verts[v3_idx]
+                    v4 = bm.verts[v4_idx]
+
+                    # Create edges if they don't exist
+                    edges_to_create = [(v1, v4), (v4, v3), (v3, v2), (v2, v1)]
+                    edges_created = 0
+
+                    for edge_verts in edges_to_create:
+                        edge_exists = False
+                        for edge in edge_verts[0].link_edges:
+                            if edge_verts[1] in edge.verts:
+                                edge_exists = True
+                                break
+                        if not edge_exists:
+                            try:
+                                bm.edges.new(edge_verts)
+                                edges_created += 1
+                                total_edges_created += 1
+                            except Exception as e:
+                                pass  # Edge might already exist from adjacent face
+
+                    # Create the face using contextual_create (F-key equivalent)
+                    try:
+                        # Select the edges that form the quad
+                        for edge in bm.edges:
+                            edge.select = False
+
+                        # Find the edges we want to use for face creation
+                        edges_for_face = []
+                        for edge_pair in [(v1, v4), (v4, v3), (v3, v2), (v2, v1)]:
+                            for edge in edge_pair[0].link_edges:
+                                if edge_pair[1] in edge.verts:
+                                    edge.select = True
+                                    edges_for_face.append(edge)
+                                    break
+
+                        # Use contextual_create to create the face
+                        if len(edges_for_face) >= 2:
+                            result = bmesh.ops.contextual_create(bm, geom=edges_for_face)
+                            if result and 'faces' in result:
+                                new_faces = len(result['faces'])
+                                total_faces_created += new_faces
+
+                    except Exception as e:
+                        pass
+
+        # --------------------------------------------------------------------------------
+        # PART B: Create edges and faces between bones at joints
+        # --------------------------------------------------------------------------------
+
+        script_log("PART B: Creating edges and faces between bones at joints...")
+
+        # Define bone connections
+        bone_connections = []
+        for bone_name, bone_data in bone_definitions.items():
+            parent_name = bone_data.get("parent")
+            if bone_name in ring_data_by_bone and parent_name in ring_data_by_bone:
+                parent_head_tail = bone_data.get("parent_head_tail", "tail")
+                bone_connections.append((parent_name, bone_name, parent_head_tail))
+
+        # SPECIAL HANDLING: Add connections for multi-segment spine
+        if has_multi_segment_spine:
+            # Connect spine segments to each other
+            for i in range(num_spine_segments - 1):
+                parent_segment = f"Spine_{i + 1:02d}"
+                child_segment = f"Spine_{i + 2:02d}"
+                if parent_segment in ring_data_by_bone and child_segment in ring_data_by_bone:
+                    bone_connections.append((parent_segment, child_segment, "tail"))
+                    script_log(f"Added spine connection: {parent_segment} -> {child_segment}")
+
+            # Connect children to the last spine segment
+            for bone_name, bone_data in bone_definitions.items():
+                parent_name = bone_data.get("parent")
+                if parent_name == "Spine" and bone_name in ring_data_by_bone:
+                    last_spine_segment = f"Spine_{num_spine_segments:02d}"
+                    if last_spine_segment in ring_data_by_bone:
+                        parent_head_tail = bone_data.get("parent_head_tail", "tail")
+                        bone_connections.append((last_spine_segment, bone_name, parent_head_tail))
+                        script_log(f"Redirected {bone_name} parent from Spine to {last_spine_segment}")
+
+        for parent_name, child_name, connection_type in bone_connections:
+            if parent_name not in ring_data_by_bone or child_name not in ring_data_by_bone:
+                continue
+
+            parent_rings = ring_data_by_bone[parent_name]
+            child_rings = ring_data_by_bone[child_name]
+
+            if not parent_rings or not child_rings:
+                continue
+
+            # Determine which rings to connect
+            if connection_type == "tail":
+                parent_connect_ring = max(parent_rings, key=lambda r: r['position'])
+                child_connect_ring = min(child_rings, key=lambda r: r['position'])
+            elif connection_type == "head":
+                parent_connect_ring = min(parent_rings, key=lambda r: r['position'])
+                child_connect_ring = min(child_rings, key=lambda r: r['position'])
+            else:
+                parent_connect_ring = max(parent_rings, key=lambda r: r['position'])
+                child_connect_ring = min(child_rings, key=lambda r: r['position'])
+
+            parent_indices = parent_connect_ring['vertex_indices']
+            child_indices = child_connect_ring['vertex_indices']
+
+            ring_size = min(len(parent_indices), len(child_indices))
+
+            # Use config-based offset with negative handling
+            child_bone_data = bone_definitions.get(child_name, {})
+            parent_offset = child_bone_data.get("parent_best_offset", 0)
+
+            script_log(f"Connecting {parent_name}->{child_name} with offset {parent_offset}")
+
+            # Create vertical edges with config-based offset
+            vertical_edges = []
+            for j in range(ring_size):
+                parent_idx = parent_indices[j]
+
+                # Apply the offset (negative means reverse orientation + offset)
+                if parent_offset >= 0:
+                    # Normal offset: child ring rotates clockwise by offset
+                    child_idx = child_indices[(j + parent_offset) % ring_size]
+                else:
+                    # Negative offset: reverse child ring orientation, then apply positive offset
+                    abs_offset = abs(parent_offset)
+                    # Reverse the ring: index = (ring_size - 1 - j)
+                    # Then apply offset
+                    child_idx = child_indices[(ring_size - 1 - j + abs_offset) % ring_size]
+
+                v1 = bm.verts[parent_idx]
+                v4 = bm.verts[child_idx]
+
+                # Create vertical edge if it doesn't exist
+                edge_exists = False
+                vertical_edge = None
+                for edge in v1.link_edges:
+                    if v4 in edge.verts:
+                        edge_exists = True
+                        vertical_edge = edge
+                        break
+
+                if not edge_exists:
+                    vertical_edge = bm.edges.new((v1, v4))
+
+                vertical_edges.append(vertical_edge)
+
+            # Create faces between consecutive vertical edges
+            for j in range(ring_size):
+                edge1 = vertical_edges[j]
+                edge2 = vertical_edges[(j + 1) % ring_size]
+
+                if edge1 is None or edge2 is None:
+                    continue
+
+                try:
+                    # Get the four vertices for this quad with offset
+                    v1 = bm.verts[parent_indices[j]]
+
+                    if parent_offset >= 0:
+                        # Normal orientation
+                        v4 = bm.verts[child_indices[(j + parent_offset) % ring_size]]
+                        v3 = bm.verts[child_indices[((j + 1) + parent_offset) % ring_size]]
+                    else:
+                        # Reversed orientation
+                        abs_offset = abs(parent_offset)
+                        v4 = bm.verts[child_indices[(ring_size - 1 - j + abs_offset) % ring_size]]
+                        v3 = bm.verts[child_indices[(ring_size - 1 - (j + 1) + abs_offset) % ring_size]]
+
+                    v2 = bm.verts[parent_indices[(j + 1) % ring_size]]
+
+                    # Check if this face already exists
+                    face_exists = False
+                    for face in v1.link_faces:
+                        if (v2 in face.verts and v3 in face.verts and v4 in face.verts):
+                            face_exists = True
+                            break
+
+                    if not face_exists:
+                        # Create the face with winding order: v1 -> v4 -> v3 -> v2
+                        new_face = bm.faces.new([v1, v4, v3, v2])
+                        new_face.normal_update()
+
+                except Exception as e:
+                    # Face might already exist, continue
+                    pass
+
+        # --------------------------------------------------------------------------------
+        # PART C1: Create simple flat end caps for extremities
+        # --------------------------------------------------------------------------------
+
+        script_log("PART C1: Creating flat end caps for extremities...")
+
+        # Define which bones need end caps (terminal bones)
+        end_cap_bones = [
+            "Head",  # Head top
+            "LeftHand",  # Left hand end
+            "RightHand",  # Right hand end
+            "LeftFoot",  # Left foot end
+            "RightFoot"  # Right foot end
+        ]
+
+        # For multi-segment spine, add the last spine segment as end cap
+        if has_multi_segment_spine:
+            last_spine_segment = f"Spine_{num_spine_segments:02d}"
+            end_cap_bones.append(last_spine_segment)
+            script_log(f"Added {last_spine_segment} as end cap bone")
+
+        end_caps_created = 0
+
+        for bone_name in end_cap_bones:
+            if bone_name in ring_data_by_bone:
+                bone_rings = ring_data_by_bone[bone_name]
+                if bone_rings:
+                    # Use the ring with highest position (furthest from parent)
+                    extremity_ring = max(bone_rings, key=lambda r: r['position'])
+                    extremity_indices = extremity_ring['vertex_indices']
+
+                    if len(extremity_indices) >= 3:
+                        # Get all vertices for the end cap
+                        end_cap_verts = [bm.verts[idx] for idx in extremity_indices]
+
+                        try:
+                            # Create a simple flat face using all vertices
+                            end_cap_face = bm.faces.new(end_cap_verts)
+                            end_caps_created += 1
+                            script_log(f"✓ Created flat end cap for {bone_name} with {len(end_cap_verts)} vertices")
+
+                        except Exception as e:
+                            # Fallback: triangle fan from first vertex
+                            try:
+                                center_vert = end_cap_verts[0]  # Use first vertex as anchor
+                                for i in range(1, len(end_cap_verts) - 1):
+                                    v1 = end_cap_verts[i]
+                                    v2 = end_cap_verts[i + 1]
+                                    try:
+                                        tri_face = bm.faces.new([center_vert, v1, v2])
+                                        end_caps_created += 1
+                                    except Exception as tri_e:
+                                        pass
+                                script_log(f"✓ Created triangle fan end cap for {bone_name}")
+                            except Exception as fan_e:
+                                script_log(f"❌ Failed to create end cap for {bone_name}")
+
+        script_log(f"Created {end_caps_created} flat end caps total")
+
+        # --------------------------------------------------------------------------------
+        # PART C2: Add more vertices to hip end caps for better side coverage
+        # --------------------------------------------------------------------------------
+
+        script_log("PART C2: Adding more vertices to hip end caps...")
+
+        # Store the count before adding new vertices
+        initial_hip_vertex_count = len(hip_horizontal_ring_vertices)
+
+        for hip_bone_name in ["LeftHip", "RightHip"]:
+            if hip_bone_name in ring_data_by_bone:
+                hip_rings = ring_data_by_bone[hip_bone_name]
+                if hip_rings:
+                    # Use the ring with highest position (tail end of hip)
+                    hip_end_ring = max(hip_rings, key=lambda r: r['position'])
+                    hip_end_indices = hip_end_ring['vertex_indices']
+
+                    def_bone_name = f"DEF_{hip_bone_name}"
+
+                    # Use is_this_a_hip_horizontal_vertex to find the 2 horizontal vertices
+                    horizontal_vertex_indices = []
+                    for vertex_index_in_ring, vertex_idx in enumerate(hip_end_indices):
+                        if is_this_a_hip_horizontal_vertex(def_bone_name, vertex_index_in_ring):
+                            horizontal_vertex_indices.append(vertex_idx)
+                            script_log(f"✓ Found horizontal vertex for {hip_bone_name}: ring_pos={vertex_index_in_ring}, vertex_idx={vertex_idx}")
+
+                    # We should have 2 horizontal vertices (opposite sides)
+                    if len(horizontal_vertex_indices) == 2:
+                        v1_idx, v2_idx = horizontal_vertex_indices
+
+                        # FIX: Ensure lookup table is current before accessing vertices
+                        bm.verts.ensure_lookup_table()
+                        bm.edges.ensure_lookup_table()
+
+                        v1 = bm.verts[v1_idx]
+                        v2 = bm.verts[v2_idx]
+
+                        script_log(f"Creating edge between horizontal vertices {v1_idx} and {v2_idx} for {hip_bone_name}")
+
+                        # Create a temporary edge between the two horizontal vertices
+                        try:
+                            temp_edge = bm.edges.new([v1, v2])
+
+                            # FIX: Update lookup table after creating edge
+                            bm.verts.ensure_lookup_table()
+                            bm.edges.ensure_lookup_table()
+
+                            # Subdivide the edge to add 2 intermediate vertices
+                            result = bmesh.ops.subdivide_edges(
+                                bm,
+                                edges=[temp_edge],
+                                cuts=2,  # Creates 2 new vertices (3 segments total)
+                                use_grid_fill=True
+                            )
+
+                            # FIX: Update lookup table after subdivision
+                            bm.verts.ensure_lookup_table()
+                            bm.edges.ensure_lookup_table()
+
+                            # Get the new vertices from subdivision
+                            if 'geom' in result:
+                                new_verts = [item for item in result['geom'] if isinstance(item, bmesh.types.BMVert)]
+
+                                # Add the new subdivided vertices to our existing hip ring
+                                for i, new_vert in enumerate(new_verts):
+                                    hip_horizontal_ring_vertices.append({
+                                        'vertex_index': new_vert.index,
+                                        'position': new_vert.co.copy(),
+                                        'bone': def_bone_name,
+                                        'ring_position': f"subdiv_{i}"  # Mark as subdivided
+                                    })
+
+                                script_log(f"✓ Added {len(new_verts)} vertices to {hip_bone_name} end cap")
+
+                        except Exception as e:
+                            script_log(f"Failed to subdivide hip end cap for {hip_bone_name}: {e}")
+                    else:
+                        script_log(f"⚠ Wrong number of horizontal vertices for {hip_bone_name}: {len(horizontal_vertex_indices)} (expected 2)")
+
+        # FIX: Final update of lookup tables before continuing
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+
+        script_log(f"Added {len(hip_horizontal_ring_vertices) - initial_hip_vertex_count} new vertices to hip end caps")
+
+        # --------------------------------------------------------------------------------
+        # PART D: Create bridge between head and neck
+        # --------------------------------------------------------------------------------
+
+        script_log("PART D: Creating bridge between head and neck...")
+
+        if "Neck" in ring_data_by_bone and "Head" in ring_data_by_bone:
+            neck_rings = ring_data_by_bone["Neck"]
+            head_rings = ring_data_by_bone["Head"]
+
+            if neck_rings and head_rings:
+                # Get the top ring of the neck (connects to head)
+                neck_connect_ring = max(neck_rings, key=lambda r: r['position'])
+                # Get the bottom ring of the head (connects to neck)
+                head_connect_ring = min(head_rings, key=lambda r: r['position'])
+
+                neck_indices = neck_connect_ring['vertex_indices']
+                head_indices = head_connect_ring['vertex_indices']
+
+                ring_size = min(len(neck_indices), len(head_indices))
+
+                # Create vertical edges between neck and head rings
+                vertical_edges = []
+                for j in range(ring_size):
+                    neck_vert = bm.verts[neck_indices[j]]
+                    head_vert = bm.verts[head_indices[j]]
+
+                    # Create vertical edge if it doesn't exist
+                    edge_exists = False
+                    vertical_edge = None
+                    for edge in neck_vert.link_edges:
+                        if head_vert in edge.verts:
+                            edge_exists = True
+                            vertical_edge = edge
+                            break
+
+                    if not edge_exists:
+                        vertical_edge = bm.edges.new((neck_vert, head_vert))
+                        total_edges_created += 1
+
+                    vertical_edges.append(vertical_edge)
+
+                # Create faces between consecutive vertical edges using contextual_create
+                faces_created_neck_head = 0
+                for j in range(ring_size):
+                    edge1 = vertical_edges[j]
+                    edge2 = vertical_edges[(j + 1) % ring_size]
+
+                    try:
+                        # Deselect all first
+                        for edge in bm.edges:
+                            edge.select = False
+
+                        # Select the two vertical edges we want to bridge
+                        edge1.select = True
+                        edge2.select = True
+
+                        # Use contextual_create to create face between the edges
+                        result = bmesh.ops.contextual_create(bm, geom=[edge1, edge2])
+
+                        if result and 'faces' in result:
+                            new_faces = len(result['faces'])
+                            faces_created_neck_head += new_faces
+                            total_faces_created += new_faces
+
+                    except Exception as e:
+                        pass
+
+        # --------------------------------------------------------------------------------
+        # PART E: Systematic bridge with LCM-based subdivision - USING PRE-COLLECTED HIP VERTICES
+        # --------------------------------------------------------------------------------
+
+        script_log("PART E: Creating systematic bridge with vertex subdivision...")
+
+        # Handle both single spine and multi-segment spine
+        spine_bone_name = None
+        if has_multi_segment_spine:
+            spine_bone_name = "Spine_01"
+        else:
+            spine_bone_name = "Spine"
+
+        if spine_bone_name in ring_data_by_bone and hip_horizontal_ring_vertices:
+            # Get the bottom ring of the spine (lowest position)
+            spine_rings = ring_data_by_bone[spine_bone_name]
+            spine_bottom_ring = min(spine_rings, key=lambda r: r['position'])
+            spine_indices = spine_bottom_ring['vertex_indices']  # n vertices
+
+            script_log(f"Using {len(hip_horizontal_ring_vertices)} pre-collected hip vertices for horizontal ring")
+
+            # Create the horizontal ring from our pre-collected vertices from PART A and PART C2
+            # First, sort them by angle around the center to form a ring
+            if len(hip_horizontal_ring_vertices) >= 4:  # Need enough vertices for a ring
+                # Calculate center of all hip vertices
+                center = Vector((0, 0, 0))
+                for vertex_data in hip_horizontal_ring_vertices:
+                    center += vertex_data['position']
+                center /= len(hip_horizontal_ring_vertices)
+
+                script_log(f"Calculated center for hip ring: {center}")
+
+                # Sort by angle in horizontal plane (X-Y plane)
+                def get_horizontal_angle(pos):
+                    relative = pos - center
+                    # Use atan2 but ensure consistent clockwise winding
+                    return math.atan2(relative.x, relative.y)  # SWAP X and Y for different winding
+
+                # Sort vertices by their angle around the center
+                hip_horizontal_ring_vertices.sort(key=lambda x: get_horizontal_angle(x['position']))
+
+                # Extract just the vertex indices in proper ring order
+                horizontal_ring = [vertex_data['vertex_index'] for vertex_data in hip_horizontal_ring_vertices]
+
+                script_log(f"Created horizontal ring with {len(horizontal_ring)} vertices in proper order")
+
+            else:
+                script_log(f"WARNING: Not enough hip vertices ({len(hip_horizontal_ring_vertices)}) for proper ring")
+                # Fallback: use all collected vertices without sorting
+                horizontal_ring = [vertex_data['vertex_index'] for vertex_data in hip_horizontal_ring_vertices]
+
+            # DEFINE n AND m HERE
+            n = len(spine_indices)  # spine vertices
+            m = len(horizontal_ring)  # hip vertices
+
+            script_log(f"Bridge configuration: spine ring has {n} vertices, hip ring has {m} vertices")
+
+            # STEP E1: Calculate LCM and subdivide both rings
+            def calculate_lcm(a, b):
+                from math import gcd
+                return abs(a * b) // gcd(a, b) if a and b else 0
+
+            lcm = calculate_lcm(n, m)
+            script_log(f"Subdividing both rings to {lcm} vertices each for perfect bridging")
+
+            # Ensure lookup table is up to date
+            bm.verts.ensure_lookup_table()
+            bm.edges.ensure_lookup_table()
+            bm.faces.ensure_lookup_table()
+
+            # Subdivide spine ring (n → lcm) - STORE VERTEX REFERENCES
+            spine_subdivided_verts = []
+            for i in range(n):
+                current_vert = bm.verts[spine_indices[i]]
+                next_vert = bm.verts[spine_indices[(i + 1) % n]]
+
+                # Add current vertex
+                spine_subdivided_verts.append(current_vert)
+
+                # Add intermediate vertices for this edge
+                subdivisions_per_edge = (lcm // n) - 1
+                for j in range(1, subdivisions_per_edge + 1):
+                    t = j / (subdivisions_per_edge + 1)
+                    intermediate_pos = current_vert.co.lerp(next_vert.co, t)
+
+                    new_vert = bm.verts.new(intermediate_pos)
+                    spine_subdivided_verts.append(new_vert)
+
+                    # Update lookup table after each new vertex
+                    bm.verts.ensure_lookup_table()
+
+                    # Add to same vertex group as spine
+                    vertex_groups[len(bm.verts) - 1] = vertex_groups[spine_indices[i]]
+
+            # Subdivide hip ring (m → lcm) - STORE VERTEX REFERENCES
+            hip_subdivided_verts = []
+            for i in range(m):
+                current_vert = bm.verts[horizontal_ring[i]]
+                next_vert = bm.verts[horizontal_ring[(i + 1) % m]]
+
+                # Add current vertex
+                hip_subdivided_verts.append(current_vert)
+
+                # Add intermediate vertices for this edge
+                subdivisions_per_edge = (lcm // m) - 1
+                for j in range(1, subdivisions_per_edge + 1):
+                    t = j / (subdivisions_per_edge + 1)
+                    intermediate_pos = current_vert.co.lerp(next_vert.co, t)
+
+                    new_vert = bm.verts.new(intermediate_pos)
+                    hip_subdivided_verts.append(new_vert)
+
+                    # Update lookup table after each new vertex
+                    bm.verts.ensure_lookup_table()
+
+                    # Add to appropriate vertex group
+                    if horizontal_ring[i] in vertex_groups:
+                        vertex_groups[len(bm.verts) - 1] = vertex_groups[horizontal_ring[i]]
+
+            # Final update of lookup tables
+            bm.verts.ensure_lookup_table()
+            bm.edges.ensure_lookup_table()
+            bm.faces.ensure_lookup_table()
+
+            # Verify we have the correct number of vertices
+            script_log(f"After subdivision: spine ring has {len(spine_subdivided_verts)} vertices, hip ring has {len(hip_subdivided_verts)} vertices")
+
+            # STEP E2: Create perfect 1:1 QUADS with configurable offset
+            quads_created = 0
+
+            # Get the offset from the Spine bone definition
+            spine_data = bone_definitions.get("Spine", {})
+            optimal_offset = spine_data.get("parent_best_offset", 0) % lcm
+
+            script_log(f"Using spine parent_best_offset {optimal_offset} for spine-hip bridge alignment")
+
+            # Now create quads with detailed logging
+            script_log("=== DEBUG: QUAD CREATION ===")
+            for i in range(lcm):
+                # Apply offset to hip ring indices
+                hip_index = (i + optimal_offset) % lcm
+                hip_next_index = (hip_index + 1) % lcm
+
+                v_spine = spine_subdivided_verts[i]
+                v_spine_next = spine_subdivided_verts[(i + 1) % lcm]
+                v_hip = hip_subdivided_verts[hip_index]
+                v_hip_next = hip_subdivided_verts[hip_next_index]
+
+                try:
+                    # Create quad: spine -> spine_next -> hip_next -> hip
+                    quad_face = bm.faces.new([v_spine, v_spine_next, v_hip_next, v_hip])
+                    quads_created += 1
+
+                    # DEBUG: Log detailed information for first few quads
+                    if quads_created <= 6:
+                        script_log(f"Quad {quads_created}:")
+                        script_log(f"  Spine[{i}]: ({v_spine.co.x:.4f}, {v_spine.co.y:.4f}, {v_spine.co.z:.4f})")
+                        script_log(f"  Hip[{hip_index}]: ({v_hip.co.x:.4f}, {v_hip.co.y:.4f}, {v_hip.co.z:.4f})")
+
+                except Exception as e:
+                    script_log(f"Failed to create quad {i}: {e}")
+
+            script_log(f"Created {quads_created} quads for perfect spine-hip bridge with offset {optimal_offset}")
+
+            # DEBUG: Final verification
+            script_log("=== DEBUG: FINAL VERIFICATION ===")
+            script_log(f"Total vertices in bmesh: {len(bm.verts)}")
+            script_log(f"Total faces in bmesh: {len(bm.faces)}")
+
+        else:
+            script_log("WARNING: Cannot create spine-hip bridge - missing spine or hip vertices")
+
+        script_log("Systematic spine-hip bridge with subdivision completed")
+
+        # --------------------------------------------------------------------------------
+        # STEP F: Bridge neck to spine
+        script_log("STEP F: Creating bridge between neck and spine...")
+
+        # Determine which spine bone to connect to neck
+        neck_spine_bone_name = None
+        if has_multi_segment_spine:
+            neck_spine_bone_name = f"Spine_{num_spine_segments:02d}"  # Use last spine segment for neck connection
+        else:
+            neck_spine_bone_name = "Spine"
+
+        if "Neck" in ring_data_by_bone and neck_spine_bone_name in ring_data_by_bone:
+            neck_rings = ring_data_by_bone["Neck"]
+            spine_rings = ring_data_by_bone[neck_spine_bone_name]
+
+            if neck_rings and spine_rings:
+                # Get the bottom ring of the neck (connects to spine)
+                neck_bottom_ring = min(neck_rings, key=lambda r: r['position'])
+                # Get the top ring of the spine (connects to neck)
+                spine_top_ring = max(spine_rings, key=lambda r: r['position'])
+
+                neck_indices = neck_bottom_ring['vertex_indices']
+                spine_indices = spine_top_ring['vertex_indices']
+
+                ring_size = min(len(neck_indices), len(spine_indices))
+
+                # Create vertical edges between neck and spine rings
+                vertical_edges = []
+                for j in range(ring_size):
+                    neck_vert = bm.verts[neck_indices[j]]
+                    spine_vert = bm.verts[spine_indices[j]]
+
+                    # Create vertical edge if it doesn't exist
+                    edge_exists = False
+                    vertical_edge = None
+                    for edge in neck_vert.link_edges:
+                        if spine_vert in edge.verts:
+                            edge_exists = True
+                            vertical_edge = edge
+                            break
+
+                    if not edge_exists:
+                        vertical_edge = bm.edges.new((neck_vert, spine_vert))
+                        total_edges_created += 1
+
+                    vertical_edges.append(vertical_edge)
+
+                # Create faces between consecutive vertical edges using contextual_create
+                faces_created_neck_spine = 0
+                for j in range(ring_size):
+                    edge1 = vertical_edges[j]
+                    edge2 = vertical_edges[(j + 1) % ring_size]
+
+                    try:
+                        # Deselect all first
+                        for edge in bm.edges:
+                            edge.select = False
+
+                        # Select the two vertical edges we want to bridge
+                        edge1.select = True
+                        edge2.select = True
+
+                        # Use contextual_create to create face between the edges
+                        result = bmesh.ops.contextual_create(bm, geom=[edge1, edge2])
+
+                        if result and 'faces' in result:
+                            new_faces = len(result['faces'])
+                            faces_created_neck_spine += new_faces
+                            total_faces_created += new_faces
+
+                    except Exception as e:
+                        # Fallback: manual face creation
+                        try:
+                            v1 = bm.verts[neck_indices[j]]
+                            v4 = bm.verts[spine_indices[j]]
+                            v3 = bm.verts[spine_indices[(j + 1) % ring_size]]
+                            v2 = bm.verts[neck_indices[(j + 1) % ring_size]]
+
+                            new_face = bm.faces.new([v1, v4, v3, v2])
+                            faces_created_neck_spine += 1
+                            total_faces_created += 1
+                        except Exception as fallback_e:
+                            pass
+
+                script_log(f"✓ Created {faces_created_neck_spine} faces bridging neck to {neck_spine_bone_name}")
+        else:
+            script_log(f"⚠ Neck or spine rings ({neck_spine_bone_name}) not found for bridging")
+
+        # Update the mesh with all edges and faces
+        bm.to_mesh(mesh)
+        mesh.update()
+        bm.free()
+
+        script_log(f"✓ Created {total_edges_created} edges and {total_faces_created} faces total")
+        script_log(f"✓ Final mesh: {len(mesh.vertices)} vertices, {len(mesh.edges)} edges, {len(mesh.polygons)} faces")
+
+        # Position and parent the mesh
+        cloud_obj.location = armature_obj.location.copy()
+        cloud_obj.rotation_euler = armature_obj.rotation_euler.copy()
+
+        bpy.context.view_layer.objects.active = cloud_obj
+        cloud_obj.select_set(True)
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+        # Create vertex groups
+        cloud_obj.vertex_groups.clear()
+        bone_vertex_groups = {}
+
+        # Include all spine segments in vertex groups
+        for bone_name in armature_data.bones.keys():
+            if bone_name.startswith("DEF_"):
+                vg = cloud_obj.vertex_groups.new(name=bone_name)
+                bone_vertex_groups[bone_name] = vg
+
+        for vertex_index, bone_name in vertex_groups.items():
+            if bone_name in bone_vertex_groups:
+                bone_vertex_groups[bone_name].add([vertex_index], 1.0, 'REPLACE')
+
+        # Parent to armature
+        bpy.ops.object.select_all(action='DESELECT')
+        cloud_obj.select_set(True)
+        armature_obj.select_set(True)
+        bpy.context.view_layer.objects.active = armature_obj
+        bpy.ops.object.parent_set(type='ARMATURE')
+
+        # Add armature modifier
+        armature_mod = cloud_obj.modifiers.new(name="Armature", type='ARMATURE')
+        armature_mod.object = armature_obj
+
+        # Apply material
+        flesh_mat = create_transparent_material("#FF6B9D", alpha=0.7)
+        cloud_obj.data.materials.append(flesh_mat)
+
+        cloud_obj.show_wire = True
+        cloud_obj.show_all_edges = True
+
+        script_log("✓ Complete flesh mesh creation finished with multi-segment spine support")
+
+        return cloud_obj
+
+    except Exception as e:
+        script_log(f"❌ Error creating flesh mesh: {e}")
+        import traceback
+        script_log(f"Traceback: {traceback.format_exc()}")
+        return None

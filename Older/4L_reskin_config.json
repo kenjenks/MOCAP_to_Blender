@@ -1,0 +1,39 @@
+{
+  "reskin_parameters": {
+    "scene_objects": {
+      "rig_name": "Main_Rig",
+      "old_mesh_name": "Kid_Complete_Skin",
+      "new_mesh_name": "New_Skin_Auto"
+    },
+    "deformation_bones": [
+     "DEF_HipRoot",
+     "DEF_LowerSpine", 
+     "DEF_UpperSpine",
+     "DEF_Neck",
+     "DEF_Head",
+     "DEF_LeftShoulder",
+     "DEF_LeftUpperArm",
+     "DEF_LeftForearm", 
+     "DEF_LeftHand",
+     "DEF_RightShoulder",
+     "DEF_RightUpperArm",
+     "DEF_RightForearm",
+     "DEF_RightHand",
+     "DEF_LeftThigh",
+     "DEF_LeftShin",
+     "DEF_LeftFoot", 
+     "DEF_RightThigh",
+     "DEF_RightShin",
+     "DEF_RightFoot"
+   ],
+    "retopology_settings": {
+      "voxel_size": 0.008,
+      "target_face_count": 500,
+      "merge_distance": 0.001
+    },
+    "smoothing_settings": {
+      "subdiv_viewport_levels": 2,
+      "subdiv_render_levels": 3
+    }
+  }
+}

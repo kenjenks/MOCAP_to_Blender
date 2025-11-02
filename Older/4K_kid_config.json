@@ -1,0 +1,850 @@
+{
+  "kid_figure_settings": {
+    "x_squish_fraction": 1.0,
+    "y_squish_fraction": 1.0,
+    "z_squish_fraction": 1.0
+  },
+  "bone_definitions": {
+    "LowerSpine": {
+      "parent": "LeftHip",
+      "head_control_point": "VIRTUAL_HIP_MIDPOINT",
+      "tail_control_point": "VIRTUAL_SPINE_MIDPOINT",
+      "def_bone": "DEF_LowerSpine",
+      "constraint": "COPY_TO",
+      "shapes": [
+        {
+          "radius": 0.145,
+          "flatten_scale": [
+            1.2,
+            0.8,
+            1.0
+          ],
+          "position": 0.0,
+          "where": "bottom"
+        },
+        {
+          "radius": 0.125,
+          "flatten_scale": [
+            1.2,
+            0.8,
+            1.0
+          ],
+          "position": 0.5,
+          "where": "middle"
+        },
+        {
+          "radius": 0.130,
+          "flatten_scale": [
+            1.2,
+            0.8,
+            1.0
+          ],
+          "position": 1.0,
+          "where": "top"
+        }
+      ]
+    },
+    "UpperSpine": {
+      "parent": null,
+      "head_control_point": "VIRTUAL_SHOULDER_MIDPOINT",
+      "tail_control_point": "VIRTUAL_SPINE_MIDPOINT",
+      "def_bone": "DEF_UpperSpine",
+      "constraint": "COPY_TO",
+      "shapes": [
+        {
+          "radius": 0.145,
+          "flatten_scale": [
+            1.2,
+            0.8,
+            1.0
+          ],
+          "position": 0.0,
+          "where": "top by shoulders"
+        },
+        {
+          "radius": 0.125,
+          "flatten_scale": [
+            1.2,
+            0.8,
+            1.0
+          ],
+          "position": 0.5,
+          "where": "middle"
+        },
+        {
+          "radius": 0.130,
+          "flatten_scale": [
+            1.2,
+            0.8,
+            1.0
+          ],
+          "position": 1.0,
+          "where": "bottom by LowerSpine"
+        }
+      ]
+    },
+    "LeftHip": {
+      "parent": "VIRTUAL_HIP_MIDPOINT",
+      "tail_landmark": "LEFT_HIP",
+      "tail_control_point": "CTRL_LEFT_HIP",
+      "def_bone": "DEF_LeftHip",
+      "constraint": "COPY_TAIL_ONLY",
+      "shapes": [
+        {
+          "radius": 0.070,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.0
+        },
+        {
+          "radius": 0.065,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.3
+        },
+        {
+          "radius": 0.060,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.7
+        },
+        {
+          "radius": 0.055,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 1.0
+        }
+      ]
+    },
+    "RightHip": {
+      "parent": "VIRTUAL_HIP_MIDPOINT",
+      "tail_landmark": "RIGHT_HIP",
+      "tail_control_point": "CTRL_RIGHT_HIP",
+      "def_bone": "DEF_RightHip",
+      "constraint": "COPY_TAIL_ONLY",
+      "shapes": [
+        {
+          "radius": 0.070,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.0
+        },
+        {
+          "radius": 0.065,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.3
+        },
+        {
+          "radius": 0.060,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.7
+        },
+        {
+          "radius": 0.055,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 1.0
+        }
+      ]
+    },
+    "LeftShoulder": {
+      "parent": "VIRTUAL_SHOULDER_MIDPOINT",
+      "tail_landmark": "LEFT_SHOULDER",
+      "tail_control_point": "CTRL_LEFT_SHOULDER",
+      "def_bone": "DEF_LeftShoulder",
+      "constraint": "COPY_TAIL_ONLY",
+      "shapes": [
+        {
+          "radius": 0.100,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.0,
+          "where": "next to RightShoulder"
+        },
+        {
+          "radius": 0.100,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.5
+        },
+        {
+          "radius": 0.080,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 1.0,
+          "where": "outside"
+        }
+      ]
+    },
+    "RightShoulder": {
+      "parent": "VIRTUAL_SHOULDER_MIDPOINT",
+      "tail_landmark": "RIGHT_SHOULDER",
+      "tail_control_point": "CTRL_RIGHT_SHOULDER",
+      "def_bone": "DEF_RightShoulder",
+      "constraint": "COPY_TAIL_ONLY",
+      "shapes": [
+        {
+          "radius": 0.100,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.0,
+          "where": "next to LeftShoulder"
+        },
+        {
+          "radius": 0.100,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.5
+        },
+        {
+          "radius": 0.080,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 1.0,
+          "where": "outside"
+        }
+      ]
+    },
+    "Neck": {
+      "parent": "LeftShoulder",
+      "head_control_point": "VIRTUAL_SHOULDER_MIDPOINT",
+      "tail_control_point": "VIRTUAL_HEAD_BASE",
+      "def_bone": "DEF_Neck",
+      "constraint": "COPY_TO",
+      "shapes": [
+        {"radius": 0.130, "flatten_scale": [1.20,0.6,1.0], "position": 0.0, "where": "bottom"},
+        {"radius": 0.080, "flatten_scale": [0.95,1.0,1.0], "position": 0.15},
+        {"radius": 0.060, "flatten_scale": [1.00,1.0,1.0], "position": 0.2},
+        {"radius": 0.060, "flatten_scale": [1.00,1.0,1.0], "position": 0.3},
+        {"radius": 0.060, "flatten_scale": [1.00,1.0,1.0], "position": 0.4},
+        {"radius": 0.060, "flatten_scale": [0.90,1.0,1.0], "position": 0.5},
+        {"radius": 0.060, "flatten_scale": [0.90,1.0,1.0], "position": 0.6},
+        {"radius": 0.090, "flatten_scale": [0.60,0.9,1.0], "position": 0.7},
+        {"radius": 0.100, "flatten_scale": [0.60,0.9,1.0], "position": 0.8},
+        {"radius": 0.100, "flatten_scale": [0.60,0.9,1.0], "position": 0.9},
+        {"radius": 0.100, "flatten_scale": [0.60,0.9,1.0], "position": 1.0
+        }
+      ]
+    },
+    "Head": {
+      "parent": "Neck",
+      "tail_landmark": "HEAD_TOP",
+      "tail_control_point": "CTRL_HEAD_TOP",
+      "def_bone": "DEF_Head",
+      "constraint": "COPY_TO",
+      "shapes": [
+        {"radius": 0.100, "flatten_scale": [0.6,0.9,1.0], "position": 0.0, "where": "bottom"},
+        {"radius": 0.100, "flatten_scale": [0.6,1.0,1.0], "position": 0.2},
+        {"radius": 0.100, "flatten_scale": [0.6,1.0,1.0], "position": 0.3},
+        {"radius": 0.100, "flatten_scale": [0.6,1.0,1.0], "position": 0.4},
+        {"radius": 0.100, "flatten_scale": [0.6,1.0,1.0], "position": 0.5},
+        {"radius": 0.100, "flatten_scale": [0.6,1.0,1.0], "position": 0.6},
+        {"radius": 0.100, "flatten_scale": [0.6,1.0,1.0], "position": 0.7},
+        {"radius": 0.090, "flatten_scale": [0.6,1.0,1.0], "position": 0.8},
+        {"radius": 0.050, "flatten_scale": [0.6,1.0,1.0], "position": 1.0}
+      ]
+    },
+    "LeftUpperArm": {
+      "parent": "LeftShoulder",
+      "tail_landmark": "LEFT_ELBOW",
+      "tail_control_point": "CTRL_LEFT_ELBOW",
+      "def_bone": "DEF_LeftUpperArm",
+      "constraint": "COPY_TAIL_ONLY",
+      "shapes": [
+        {
+          "radius": 0.080,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.0
+        },
+        {
+          "radius": 0.075,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.3
+        },
+        {
+          "radius": 0.075,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.7
+        },
+        {
+          "radius": 0.075,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 1.0
+        }
+      ]
+    },
+    "LeftForearm": {
+      "parent": "LeftUpperArm",
+      "tail_landmark": "LEFT_WRIST",
+      "tail_control_point": "CTRL_LEFT_WRIST",
+      "def_bone": "DEF_LeftForearm",
+      "constraint": "COPY_TO",
+      "shapes": [
+        {
+          "radius": 0.075,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.0
+        },
+        {
+          "radius": 0.070,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.3
+        },
+        {
+          "radius": 0.065,
+          "flatten_scale": [
+            0.8,
+            1.0,
+            1.0
+          ],
+          "position": 0.7
+        },
+        {
+          "radius": 0.040,
+          "flatten_scale": [
+            1.5,
+            0.6,
+            1.5
+          ],
+          "position": 1.0
+        }
+      ]
+    },
+    "LeftHand": {
+      "parent": "LeftForearm",
+      "tail_landmark": "LEFT_INDEX",
+      "tail_control_point": "CTRL_LEFT_INDEX",
+      "def_bone": "DEF_LeftHand",
+      "constraint": "COPY_TO",
+      "shapes": [
+        {
+          "radius": 0.040,
+          "flatten_scale": [
+            1.5,
+            0.6,
+            1.5
+          ],
+          "position": 0.0
+        },
+        {
+          "radius": 0.035,
+          "flatten_scale": [
+            1.4,
+            0.5,
+            1.4
+          ],
+          "position": 0.3
+        },
+        {
+          "radius": 0.030,
+          "flatten_scale": [
+            1.3,
+            0.5,
+            1.3
+          ],
+          "position": 0.7
+        },
+        {
+          "radius": 0.025,
+          "flatten_scale": [
+            1.2,
+            0.2,
+            1.2
+          ],
+          "position": 1.0
+        }
+      ]
+    },
+    "RightUpperArm": {
+      "parent": "RightShoulder",
+      "tail_landmark": "RIGHT_ELBOW",
+      "tail_control_point": "CTRL_RIGHT_ELBOW",
+      "def_bone": "DEF_RightUpperArm",
+      "constraint": "COPY_TAIL_ONLY",
+      "shapes": [
+        {
+          "radius": 0.080,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.0
+        },
+        {
+          "radius": 0.075,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.3
+        },
+        {
+          "radius": 0.075,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.7
+        },
+        {
+          "radius": 0.075,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 1.0
+        }
+      ]
+    },
+    "RightForearm": {
+      "parent": "RightUpperArm",
+      "tail_landmark": "RIGHT_WRIST",
+      "tail_control_point": "CTRL_RIGHT_WRIST",
+      "def_bone": "DEF_RightForearm",
+      "constraint": "COPY_TO",
+      "shapes": [
+        {
+          "radius": 0.075,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.0
+        },
+        {
+          "radius": 0.070,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.3
+        },
+        {
+          "radius": 0.065,
+          "flatten_scale": [
+            0.8,
+            1.0,
+            1.0
+          ],
+          "position": 0.7
+        },
+        {
+          "radius": 0.040,
+          "flatten_scale": [
+            1.5,
+            0.6,
+            1.5
+          ],
+          "position": 1.0
+        }
+      ]
+    },
+    "RightHand": {
+      "parent": "RightForearm",
+      "tail_landmark": "RIGHT_INDEX",
+      "tail_control_point": "CTRL_RIGHT_INDEX",
+      "def_bone": "DEF_RightHand",
+      "constraint": "COPY_TO",
+      "shapes": [
+        {
+          "radius": 0.040,
+          "flatten_scale": [
+            1.5,
+            0.6,
+            1.5
+          ],
+          "position": 0.0
+        },
+        {
+          "radius": 0.035,
+          "flatten_scale": [
+            1.4,
+            0.5,
+            1.4
+          ],
+          "position": 0.3
+        },
+        {
+          "radius": 0.030,
+          "flatten_scale": [
+            1.3,
+            0.5,
+            1.3
+          ],
+          "position": 0.7
+        },
+        {
+          "radius": 0.025,
+          "flatten_scale": [
+            1.2,
+            0.2,
+            1.2
+          ],
+          "position": 1.0
+        }
+      ]
+    },
+    "LeftThigh": {
+      "parent": "LeftHip",
+      "tail_landmark": "LEFT_KNEE",
+      "tail_control_point": "CTRL_LEFT_KNEE",
+      "def_bone": "DEF_LeftThigh",
+      "constraint": "COPY_TAIL_ONLY",
+      "shapes": [
+        {
+          "radius": 0.080,
+          "flatten_scale": [
+            0.7,
+            1.0,
+            1.0
+          ],
+          "position": 0.0
+        },
+        {
+          "radius": 0.100,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.25
+        },
+        {
+          "radius": 0.095,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.5
+        },
+        {
+          "radius": 0.093,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.75
+        },
+        {
+          "radius": 0.090,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 1.0
+        }
+      ]
+    },
+    "LeftShin": {
+      "parent": "LeftThigh",
+      "tail_landmark": "LEFT_HEEL",
+      "tail_control_point": "CTRL_LEFT_HEEL",
+      "def_bone": "DEF_LeftShin",
+      "constraint": "COPY_TO",
+      "shapes": [
+        {
+          "radius": 0.090,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.0
+        },
+        {
+          "radius": 0.075,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.3
+        },
+        {
+          "radius": 0.060,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.7
+        },
+        {
+          "radius": 0.040,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 1.0
+        }
+      ]
+    },
+    "LeftFoot": {
+      "parent": "LeftShin",
+      "tail_landmark": "LEFT_FOOT_INDEX",
+      "tail_control_point": "CTRL_LEFT_FOOT_INDEX",
+      "def_bone": "DEF_LeftFoot",
+      "constraint": "COPY_TO",
+      "shapes": [
+        {
+          "radius": 0.040,
+          "flatten_scale": [
+            1.0,
+            0.8,
+            1.5
+          ],
+          "position": 0.0
+        },
+        {
+          "radius": 0.045,
+          "flatten_scale": [
+            1.4,
+            0.8,
+            1.4
+          ],
+          "position": 0.3
+        },
+        {
+          "radius": 0.050,
+          "flatten_scale": [
+            1.3,
+            0.7,
+            1.3
+          ],
+          "position": 0.7
+        },
+        {
+          "radius": 0.040,
+          "flatten_scale": [
+            1.2,
+            0.5,
+            1.2
+          ],
+          "position": 1.0
+        }
+      ]
+    },
+    "RightThigh": {
+      "parent": "RightHip",
+      "tail_landmark": "RIGHT_KNEE",
+      "tail_control_point": "CTRL_RIGHT_KNEE",
+      "def_bone": "DEF_RightThigh",
+      "constraint": "COPY_TAIL_ONLY",
+      "shapes": [
+        {
+          "radius": 0.080,
+          "flatten_scale": [
+            0.7,
+            1.0,
+            1.0
+          ],
+          "position": 0.0
+        },
+        {
+          "radius": 0.100,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.25
+        },
+        {
+          "radius": 0.095,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.5
+        },
+        {
+          "radius": 0.093,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.75
+        },
+        {
+          "radius": 0.090,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 1.0
+        }
+      ]
+    },
+    "RightShin": {
+      "parent": "RightThigh",
+      "tail_landmark": "RIGHT_HEEL",
+      "tail_control_point": "CTRL_RIGHT_HEEL",
+      "def_bone": "DEF_RightShin",
+      "constraint": "COPY_TO",
+      "shapes": [
+        {
+          "radius": 0.090,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.0
+        },
+        {
+          "radius": 0.075,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.3
+        },
+        {
+          "radius": 0.060,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 0.7
+        },
+        {
+          "radius": 0.040,
+          "flatten_scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "position": 1.0
+        }
+      ]
+    },
+    "RightFoot": {
+      "parent": "RightShin",
+      "tail_landmark": "RIGHT_FOOT_INDEX",
+      "tail_control_point": "CTRL_RIGHT_FOOT_INDEX",
+      "def_bone": "DEF_RightFoot",
+      "constraint": "COPY_TO",
+      "shapes": [
+        {
+          "radius": 0.040,
+          "flatten_scale": [
+            1.0,
+            0.8,
+            1.5
+          ],
+          "position": 0.0
+        },
+        {
+          "radius": 0.045,
+          "flatten_scale": [
+            1.4,
+            0.8,
+            1.4
+          ],
+          "position": 0.3
+        },
+        {
+          "radius": 0.050,
+          "flatten_scale": [
+            1.3,
+            0.7,
+            1.3
+          ],
+          "position": 0.7
+        },
+        {
+          "radius": 0.040,
+          "flatten_scale": [
+            1.2,
+            0.5,
+            1.2
+          ],
+          "position": 1.0
+        }
+      ]
+    }
+  }
+}

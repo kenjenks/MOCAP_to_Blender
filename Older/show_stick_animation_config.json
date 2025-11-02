@@ -1,0 +1,125 @@
+{
+    "file_settings": {
+        "input_json": "step_2_input.json",
+        "output_blend": "step_2_stick_animation.blend",
+        "show_video": true,
+        "video_file_name": "step_1_input.mp4",
+        "video_plane": "XZ",
+        "video_size": 1.6,
+        "video_rotation": [0, 0, 0]
+    },
+    "cylinder_settings": {
+        "radius": 0.005,
+        "overlap_epsilon": 0.002
+    },
+    "bone_definitions": {
+        "Hip_to_Hip_Connection": {
+            "parent": null,
+            "start_mp": "RIGHT_HIP",
+            "end_mp": "LEFT_HIP",
+            "color": "#0000ff"
+        },
+        "Shoulder_to_Shoulder_Connection": {
+            "parent": null,
+            "start_mp": "LEFT_SHOULDER",
+            "end_mp": "RIGHT_SHOULDER",
+            "color": "#ff0000"
+        },
+        "LeftShoulder_to_Elbow_Connection": {
+            "parent": null,
+            "start_mp": "LEFT_SHOULDER",
+            "end_mp": "LEFT_ELBOW",
+            "color": "#ffffff"
+        },
+        "LeftElbow_to_Wrist_Connection": {
+            "parent": null,
+            "start_mp": "LEFT_ELBOW",
+            "end_mp": "LEFT_WRIST",
+            "color": "#ffffff"
+        },
+        "RightShoulder_to_Elbow_Connection": {
+            "parent": null,
+            "start_mp": "RIGHT_SHOULDER",
+            "end_mp": "RIGHT_ELBOW",
+            "color": "#ffffff"
+        },
+        "RightElbow_to_Wrist_Connection": {
+            "parent": null,
+            "start_mp": "RIGHT_ELBOW",
+            "end_mp": "RIGHT_WRIST",
+            "color": "#ffffff"
+        },
+        "LeftHip_to_Knee_Connection": {
+            "parent": null,
+            "start_mp": "LEFT_HIP",
+            "end_mp": "LEFT_KNEE",
+            "color": "#ffffff"
+        },
+        "LeftKnee_to_Heel_Connection": {
+            "parent": null,
+            "start_mp": "LEFT_KNEE",
+            "end_mp": "LEFT_HEEL",
+            "color": "#ffffff"
+        },
+        "RightHip_to_Knee_Connection": {
+            "parent": null,
+            "start_mp": "RIGHT_HIP",
+            "end_mp": "RIGHT_KNEE",
+            "color": "#ffffff"
+        },
+        "RightKnee_to_Heel_Connection": {
+            "parent": null,
+            "start_mp": "RIGHT_KNEE",
+            "end_mp": "RIGHT_HEEL",
+            "color": "#ffffff"
+        },
+        "LeftShoulder_to_Hip_Connection": {
+            "parent": null,
+            "start_mp": "LEFT_SHOULDER",
+            "end_mp": "LEFT_HIP",
+            "color": "#ffffff"
+        },
+        "RightShoulder_to_Hip_Connection": {
+            "parent": null,
+            "start_mp": "RIGHT_SHOULDER",
+            "end_mp": "RIGHT_HIP",
+            "color": "#ffffff"
+        },
+        "NOSE_to_RightShoulder_Connection": {
+            "parent": null,
+            "start_mp": "NOSE",
+            "end_mp": "RIGHT_SHOULDER",
+            "color": "#ffffff"
+        },
+        "NOSE_to_LeftShoulder_Connection": {
+            "parent": null,
+            "start_mp": "NOSE",
+            "end_mp": "LEFT_SHOULDER",
+            "color": "#ffffff"
+        },
+        "LeftWrist_to_Index_Connection": {
+            "parent": null,
+            "start_mp": "LEFT_WRIST",
+            "end_mp": "LEFT_INDEX",
+            "color": "#ffffff"
+        },
+        "RightWrist_to_Index_Connection": {
+            "parent": null,
+            "start_mp": "RIGHT_WRIST",
+            "end_mp": "RIGHT_INDEX",
+            "color": "#ffffff"
+        },
+        "LeftHeel_to_Index_Connection": {
+            "parent": null,
+            "start_mp": "LEFT_HEEL",
+            "end_mp": "LEFT_FOOT_INDEX",
+            "color": "#ffffff"
+        },
+        "RightHeel_to_Index_Connection": {
+            "parent": null,
+            "start_mp": "RIGHT_HEEL",
+            "end_mp": "RIGHT_FOOT_INDEX",
+            "color": "#ffffff"
+        }
+    }
+}

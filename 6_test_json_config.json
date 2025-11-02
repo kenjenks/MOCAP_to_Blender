@@ -1,0 +1,83 @@
+{
+  "6_test_json_config": {
+    "version": "1.0",
+    "description": "Configuration for mocap pipeline analysis tool",
+    
+    "coordinate_systems": {
+      "filter_data": "MEDIAPIPE",
+      "apply_physics": "MEDIAPIPE", 
+      "export_to_blender": "BLENDER",
+      "Step 2 - Filtered Pose Data": "MEDIAPIPE",
+      "Step 3 - Physics Applied": "MEDIAPIPE",
+      "Step 4 - Final Pose Data": "BLENDER",
+      "Step2": "MEDIAPIPE",
+      "Step3": "MEDIAPIPE",
+      "Step4": "BLENDER",
+      "extract_pose": "MEDIAPIPE"
+    },
+    
+    "report_settings": {
+      "generate_json_structure_reports": true,
+      "generate_landmark_quality_reports": true,
+      "generate_coordinate_system_reports": true,
+      "generate_comprehensive_reports": true,
+      "generate_comparison_report": true,
+      "generate_config_report": true,
+      
+      "concatenate_all_reports": true,
+      "master_report_filename": "mocap_analysis_master_report.txt",
+      "include_in_master_report": {
+        "config_report": true,
+        "json_structure_reports": true,
+        "landmark_quality_reports": true,
+        "coordinate_system_reports": true,
+        "comprehensive_reports": true,
+        "comparison_report": true
+      },
+      
+      "sample_frames_for_detailed_analysis": 10,
+      "min_acrobatic_sequence_duration": 5,
+      "orientation_stability_threshold": 0.1,
+      "max_state_transitions_to_show": 10
+    },
+    
+    "analysis_settings": {
+      "motion_detection_window_size": 5,
+      "floor_threshold": 0.05,
+      "feet_off_ground_threshold": 0.1,
+      "upward_velocity_threshold": 0.05,
+      "downward_velocity_threshold": -0.05,
+      "running_velocity_threshold": 0.1,
+      "walking_velocity_threshold": 0.02,
+      
+      "enable_motion_state_analysis": true,
+      "enable_acrobatic_pose_detection": true,
+      "enable_orientation_stability_analysis": true,
+      "enable_facing_analysis": true,
+      "enable_body_plane_analysis": true
+    },
+    
+    "file_discovery": {
+      "search_patterns": {
+        "step2": ["step2", "step_2", "filtered", "processed", "filter_data"],
+        "step3": ["step3", "step_3", "physics", "applied", "apply_physics"],
+        "step4": ["step4", "step_4", "final", "output", "export", "export_to_blender"]
+      },
+      "min_json_file_size_bytes": 1000,
+      "skip_config_files": true
+    },
+    
+    "output_settings": {
+      "log_level": "INFO",
+      "reports_directory": "logs",
+      "timestamp_format": "%Y-%m-%d_%H-%M-%S"
+    },
+    
+    "diagnostic_settings": {
+      "enable_project_structure_diagnosis": true,
+      "enable_scene_file_diagnosis": true,
+      "enable_processing_step_diagnosis": true,
+      "max_files_to_list_in_diagnostics": 20
+    }
+  }
+}

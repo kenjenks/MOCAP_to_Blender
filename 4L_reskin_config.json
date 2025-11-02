@@ -1,0 +1,45 @@
+{
+  "scene_objects": {
+    "rig_name": "Main_Rig",
+    "old_mesh_name": "Kid_Complete_Skin",
+    "new_mesh_name": "New_Skin_Auto"
+  },
+  "anatomical_processing_order": [
+    {"bone": "DEF_LowerSpine", "order": 1, "face_count": 400, "bridge_to": null},
+    {"bone": "DEF_UpperSpine", "order": 2, "face_count": 400, "bridge_to": "DEF_LowerSpine"},
+    {"bone": "DEF_LeftFoot", "order": 3, "face_count": 200, "bridge_to": "DEF_LeftShin"},
+    {"bone": "DEF_LeftShin", "order": 4, "face_count": 400, "bridge_to": "DEF_LeftThigh"},
+    {"bone": "DEF_LeftThigh", "order": 5, "face_count": 600, "bridge_to": "DEF_LeftHip"},
+    {"bone": "DEF_LeftHip", "order": 6, "face_count": 300, "bridge_to": null},
+    {"bone": "DEF_RightFoot", "order": 7, "face_count": 200, "bridge_to": "DEF_RightShin"},
+    {"bone": "DEF_RightShin", "order": 8, "face_count": 400, "bridge_to": "DEF_RightThigh"},
+    {"bone": "DEF_RightThigh", "order": 9, "face_count": 600, "bridge_to": "DEF_RightHip"},
+    {"bone": "DEF_RightHip", "order": 10, "face_count": 300, "bridge_to": null},
+    {"bone": "DEF_LeftHand", "order": 11, "face_count": 200, "bridge_to": "DEF_LeftForearm"},
+    {"bone": "DEF_LeftForearm", "order": 12, "face_count": 300, "bridge_to": "DEF_LeftUpperArm"},
+    {"bone": "DEF_LeftUpperArm", "order": 13, "face_count": 400, "bridge_to": "DEF_LeftShoulder"},
+    {"bone": "DEF_LeftShoulder", "order": 14, "face_count": 200, "bridge_to": "DEF_UpperSpine"},
+    {"bone": "DEF_RightHand", "order": 15, "face_count": 200, "bridge_to": "DEF_RightForearm"},
+    {"bone": "DEF_RightForearm", "order": 16, "face_count": 300, "bridge_to": "DEF_RightUpperArm"},
+    {"bone": "DEF_RightUpperArm", "order": 17, "face_count": 400, "bridge_to": "DEF_RightShoulder"},
+    {"bone": "DEF_RightShoulder", "order": 18, "face_count": 200, "bridge_to": "DEF_UpperSpine"},
+    {"bone": "DEF_Head", "order": 19, "face_count": 500, "bridge_to": "DEF_Neck"},
+    {"bone": "DEF_Neck", "order": 20, "face_count": 100, "bridge_to": "DEF_UpperSpine"}
+  ],
+  "bridge_settings": {
+    "default_bridge_vertex_count": 12
+  },
+  "retopology_settings": {
+    "preserve_sharp_edges": true,
+    "preserve_boundary": false,
+    "optimal_display": true,
+    "use_smooth_shade": true,
+    "apply_subsurf": true,
+    "subdivision_levels": 2
+  },
+  "smoothing_settings": {
+    "smooth_angle": 30.0,
+    "use_auto_smooth": true,
+    "smooth_shading": true
+  }
+}

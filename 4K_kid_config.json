@@ -1,0 +1,676 @@
+{
+  "kid_figure_settings": {
+    "x_squish_fraction": 1.0,
+    "y_squish_fraction": 1.0,
+    "z_squish_fraction": 1.0
+  },
+  "system_settings": {
+    "auto_generate_uvs": true
+  },
+  "uv_settings": {
+    "uv_scale_factor": 1.0,
+    "auto_seam_detection": true,
+    "uv_padding": 0.02
+  },
+  "geometry_settings": {
+    "character_height": 1.6,
+    "default_segments": 8,
+    "head_segments": 16,
+    "head_ring_count": 12,
+    "mitten_thumb_angle_factor": 0.7,
+    "torso_height": 0.8,
+    "torso_radius": 0.17,
+    "knee_radius_calculation": "average",
+    "elbow_radius_calculation": "average"
+  },
+  "base_radii": {
+    "ankle": 0.08,
+    "wrist": 0.06,
+    "shoulder": 0.12,
+    "hip": 0.14,
+    "head": 0.35
+  },
+  "cloth_garments": {
+    "garment_neck": {
+      "enabled": true,
+      "type": "CYLINDRICAL",
+      "bone": "DEF_Neck",
+      "puffiness": 1.0,
+      "neck_height": 0.08,
+      "neck_diameter": 0.14,
+      "collar_style": "turtleneck",
+      "material": {
+        "color": [0.1, 0.3, 0.8, 1.0],
+        "roughness": 0.8,
+        "metallic": 0.0
+      },
+      "cloth_settings": {
+        "enabled": true,
+        "mass": 0.3,
+        "tension_stiffness": 5.0,
+        "compression_stiffness": 4.0,
+        "shear_stiffness": 3.0,
+        "bending_stiffness": 0.5,
+        "air_damping": 1.0,
+        "quality": 6
+      }
+    },
+    "garment_head": {
+      "enabled": true,
+      "type": "OBLATE_SPHEROID",
+      "bone": "DEF_Head",
+      "scale": [0.35, 0.38, 0.4],
+      "position_offset": [0.0, 0.0, 0.0],
+      "rotation_offset": [0.0, 0.0, 0.0],
+      "landmark_top": "CTRL_HEAD_TOP",
+      "landmark_front": "CTRL_NOSE",
+      "neck_connection_radius": 0.12,
+      "subdivision_levels": 2,
+      "material": {
+        "color": [0.96, 0.86, 0.72, 1.0],
+        "roughness": 0.4,
+        "metallic": 0.0,
+        "subsurface": 0.2,
+        "subsurface_color": [1.0, 0.8, 0.7, 1.0]
+      },
+      "uv_preset": {
+        "method": "SPHERICAL",
+        "seams": ["neck_opening", "back_head_seam"],
+        "island_margin": 0.01,
+        "scale_to_bounds": true
+      },
+      "cloth_settings": {
+        "enabled": false,
+        "mass": 0.8,
+        "tension_stiffness": 15.0,
+        "compression_stiffness": 15.0,
+        "shear_stiffness": 10.0,
+        "bending_stiffness": 2.0,
+        "air_damping": 1.0,
+        "quality": 6
+      },
+      "human_proportions": {
+        "forehead_scale": 0.95,
+        "cheek_scale": 1.1,
+        "jaw_scale": 0.9,
+        "chin_scale": 0.8,
+        "back_head_scale": 1.05,
+        "top_head_scale": 0.95
+      },
+      "facial_features": {
+        "eye_socket_depth": 0.08,
+        "nose_bridge_height": 0.05,
+        "enable_eye_sockets": true,
+        "enable_nose_bridge": true
+      }
+    },
+    "left_boot": {
+      "enabled": true,
+      "type": "COMPOUND",
+      "bones": ["DEF_LeftShin", "DEF_LeftFoot"],
+      "puffiness": 1.0,
+      "shaft_height": 0.15,
+      "foot_length": 0.12,
+      "foot_height": 0.06,
+      "segments": 8,
+      "material": {
+        "color": [0.3, 0.2, 0.1, 1.0],
+        "roughness": 0.9,
+        "metallic": 0.1
+      },
+      "uv_preset": {
+        "method": "CYLINDRICAL",
+        "seams": ["back_shaft", "sole_perimeter"],
+        "island_margin": 0.01,
+        "scale_to_bounds": true
+      },
+      "cloth_settings": {
+        "enabled": false,
+        "mass": 0.7,
+        "tension_stiffness": 25.0,
+        "compression_stiffness": 20.0,
+        "shear_stiffness": 15.0,
+        "bending_stiffness": 5.0,
+        "air_damping": 1.0,
+        "quality": 6
+      }
+    },
+    "right_boot": {
+      "enabled": true,
+      "type": "COMPOUND",
+      "bones": ["DEF_RightShin", "DEF_RightFoot"],
+      "puffiness": 1.0,
+      "shaft_height": 0.15,
+      "foot_length": 0.12,
+      "foot_height": 0.06,
+      "segments": 8,
+      "material": {
+        "color": [0.3, 0.2, 0.1, 1.0],
+        "roughness": 0.9,
+        "metallic": 0.1
+      },
+      "uv_preset": {
+        "method": "CYLINDRICAL",
+        "seams": ["back_shaft", "sole_perimeter"],
+        "island_margin": 0.01,
+        "scale_to_bounds": true
+      },
+      "cloth_settings": {
+        "enabled": false,
+        "mass": 0.7,
+        "tension_stiffness": 25.0,
+        "compression_stiffness": 20.0,
+        "shear_stiffness": 15.0,
+        "bending_stiffness": 5.0,
+        "air_damping": 1.0,
+        "quality": 6
+      }
+    },
+    "left_sleeve": {
+      "enabled": true,
+      "type": "TAPERED_CYLINDER",
+      "bone_chain": ["DEF_LeftShoulder", "DEF_LeftUpperArm", "DEF_LeftForearm"],
+      "puffiness": 1.0,
+      "diameter_start": 0.15,
+      "diameter_elbow": 0.12,
+      "diameter_end": 0.08,
+      "segments": 32,
+      "subdivision": {
+        "manual_cuts": 2,
+        "subdiv_levels": 2,
+        "min_rings": 24,
+        "rings_per_meter": 50
+      },
+      "cloth_settings": {
+        "enabled": true,
+        "quality": 12,
+        "mass": 0.1,
+        "tension_stiffness": 15.0,
+        "compression_stiffness": 12.0,
+        "shear_stiffness": 8.0,
+        "bending_stiffness": 1.5,
+        "air_damping": 1.0,
+        "time_scale": 0.8,
+        "collision_quality": 6,
+        "self_distance_min": 0.003
+      },
+      "vertex_weighting": {
+        "elbow_sphere_falloff": "quadratic",
+        "min_weight_threshold": 0.05,
+        "elbow_binding_strength": 0.8,
+        "sphere_influence_scale": 2.0
+      },
+      "material": {
+        "color": [0.1, 0.3, 0.8, 1.0],
+        "roughness": 0.9,
+        "metallic": 0.0
+      },
+      "uv_preset": {
+        "method": "CYLINDRICAL",
+        "seams": ["inner_arm", "wrist_seam"],
+        "island_margin": 0.01,
+        "scale_to_bounds": true
+      }
+    },
+    "right_sleeve": {
+      "enabled": true,
+      "type": "TAPERED_CYLINDER",
+      "bone_chain": ["DEF_RightShoulder", "DEF_RightUpperArm", "DEF_RightForearm"],
+      "puffiness": 1.0,
+      "diameter_start": 0.15,
+      "diameter_elbow": 0.12,
+      "diameter_end": 0.08,
+      "segments": 32,
+      "subdivision": {
+        "manual_cuts": 2,
+        "subdiv_levels": 2,
+        "min_rings": 24,
+        "rings_per_meter": 50
+      },
+      "cloth_settings": {
+        "enabled": true,
+        "quality": 12,
+        "mass": 0.1,
+        "tension_stiffness": 15.0,
+        "compression_stiffness": 12.0,
+        "shear_stiffness": 8.0,
+        "bending_stiffness": 1.5,
+        "air_damping": 1.0,
+        "time_scale": 0.8,
+        "collision_quality": 6,
+        "self_distance_min": 0.003
+      },
+      "vertex_weighting": {
+        "elbow_sphere_falloff": "quadratic",
+        "min_weight_threshold": 0.05,
+        "sphere_influence_scale": 1.0
+      },
+      "material": {
+        "color": [0.1, 0.3, 0.8, 1.0],
+        "roughness": 0.9,
+        "metallic": 0.0
+      },
+      "uv_preset": {
+        "method": "CYLINDRICAL",
+        "seams": ["inner_arm", "wrist_seam"],
+        "island_margin": 0.01,
+        "scale_to_bounds": true
+      }
+    },
+    "left_pants": {
+      "enabled": true,
+      "type": "CONTINUOUS_CYLINDER",
+      "bone_chain": ["DEF_LeftHip", "DEF_LeftThigh", "DEF_LeftShin"],
+      "puffiness": 1.0,
+      "diameter_hip": 0.18,
+      "diameter_knee": 0.14,
+      "diameter_ankle": 0.12,
+      "segments": 32,
+      "subdivision": {
+        "manual_cuts": 2,
+        "subdiv_levels": 2,
+        "min_rings": 24,
+        "rings_per_meter": 50
+      },
+      "vertex_weighting": {
+        "knee_sphere_falloff": "quadratic",
+        "min_weight_threshold": 0.05,
+        "sphere_influence_scale": 2.0
+      },
+      "material": {
+        "color": [0.9, 0.9, 0.9, 1.0],
+        "roughness": 0.8,
+        "metallic": 0.0
+      },
+      "uv_preset": {
+        "method": "CYLINDRICAL",
+        "seams": ["inner_leg", "outer_leg", "waistband"],
+        "island_margin": 0.01,
+        "scale_to_bounds": true
+      },
+      "cloth_settings": {
+        "enabled": true,
+        "quality": 12,
+        "mass": 0.2,
+        "tension_stiffness": 6.0,
+        "compression_stiffness": 5.0,
+        "shear_stiffness": 4.0,
+        "bending_stiffness": 0.6,
+        "air_damping": 0.8,
+        "time_scale": 1.0,
+        "collision_quality": 8,
+        "self_distance_min": 0.002,
+        "external_collisions": true,
+        "collision_group": 2
+      }
+    },
+    "right_pants": {
+      "enabled": true,
+      "type": "CONTINUOUS_CYLINDER", 
+      "bone_chain": ["DEF_RightHip", "DEF_RightThigh", "DEF_RightShin"],
+      "puffiness": 1.0,
+      "diameter_hip": 0.18,
+      "diameter_knee": 0.14,
+      "diameter_ankle": 0.12,
+      "segments": 32,
+      "subdivision": {
+        "manual_cuts": 2,
+        "subdiv_levels": 2,
+        "min_rings": 24,
+        "rings_per_meter": 50
+      },
+      "vertex_weighting": {
+        "knee_sphere_falloff": "quadratic", 
+        "min_weight_threshold": 0.05,
+        "sphere_influence_scale": 2.0
+      },
+      "material": {
+        "color": [0.9, 0.9, 0.9, 1.0],
+        "roughness": 0.8,
+        "metallic": 0.0
+      },
+      "uv_preset": {
+        "method": "CYLINDRICAL",
+        "seams": ["inner_leg", "outer_leg", "waistband"],
+        "island_margin": 0.01,
+        "scale_to_bounds": true
+      },
+      "cloth_settings": {
+        "enabled": true,
+        "quality": 12,
+        "mass": 0.2,
+        "tension_stiffness": 6.0,
+        "compression_stiffness": 5.0,
+        "shear_stiffness": 4.0,
+        "bending_stiffness": 0.6,
+        "air_damping": 0.8,
+        "time_scale": 1.0,
+        "collision_quality": 8,
+        "self_distance_min": 0.002,
+        "external_collisions": true,
+        "collision_group": 2
+      }
+    },
+    "left_mitten": {
+      "enabled": true,
+      "type": "BOX_MITTEN",
+      "bone": "DEF_LeftHand",
+      "puffiness": 1.0,
+      "hand_size": [0.1, 0.08, 0.04],
+      "thumb_size": [0.04, 0.03, 0.03],
+      "segments": 8,
+      "wrist_connection": true,
+      "material": {
+        "color": [0.8, 0.1, 0.1, 1.0],
+        "roughness": 0.6,
+        "metallic": 0.0
+      },
+      "uv_preset": {
+        "method": "BOX_PROJECT",
+        "seams": ["thumb_attachment", "palm_seam"],
+        "island_margin": 0.01,
+        "scale_to_bounds": true
+      },
+      "cloth_settings": {
+        "enabled": false,
+        "mass": 0.1,
+        "tension_stiffness": 5.0,
+        "compression_stiffness": 4.0,
+        "shear_stiffness": 3.0,
+        "bending_stiffness": 0.2,
+        "air_damping": 1.0,
+        "quality": 4
+      }
+    },
+    "right_mitten": {
+      "enabled": true,
+      "type": "BOX_MITTEN",
+      "bone": "DEF_RightHand",
+      "puffiness": 1.0,
+      "hand_size": [0.1, 0.08, 0.04],
+      "thumb_size": [0.04, 0.03, 0.03],
+      "segments": 8,
+      "wrist_connection": true,
+      "material": {
+        "color": [0.8, 0.1, 0.1, 1.0],
+        "roughness": 0.6,
+        "metallic": 0.0
+      },
+      "uv_preset": {
+        "method": "BOX_PROJECT",
+        "seams": ["thumb_attachment", "palm_seam"],
+        "island_margin": 0.01,
+        "scale_to_bounds": true
+      },
+      "cloth_settings": {
+        "enabled": false,
+        "mass": 0.1,
+        "tension_stiffness": 5.0,
+        "compression_stiffness": 4.0,
+        "shear_stiffness": 3.0,
+        "bending_stiffness": 0.2,
+        "air_damping": 1.0,
+        "quality": 4
+      }
+    },
+    "coat_torso": {
+      "enabled": true,
+      "type": "CYLINDER",
+      "bone": "DEF_UpperSpine",
+      "puffiness": 1.0,
+      "coat_length": "short",
+      "coat_length_settings": {
+        "short": {
+          "length_factor": 1.25,
+          "has_quarters": false,
+          "hip_constraint_strength": 0.8,
+          "quarter_spread": 0.0
+        },
+        "long": {
+          "length_factor": 1.0,
+          "has_quarters": true,
+          "hip_constraint_strength": 0.0,
+          "quarter_spread": 0.6
+        }
+      },
+      "torso_radius": 0.17,
+      "torso_height": 0.8,
+      "collar_style": "hood",
+      "armhole_radius": 0.075,
+      "seam_bones": ["DEF_LeftShoulder", "DEF_RightShoulder"],
+      "vertical_segments": 64,
+      "radial_segments": 48,
+      "material": {
+        "color": [0.1, 0.3, 0.8, 1.0],
+        "roughness": 0.7,
+        "metallic": 0.0
+      },
+      "uv_preset": {
+        "method": "CYLINDRICAL",
+        "seams": ["under_arms", "center_back", "sleeve_ends"],
+        "island_margin": 0.01,
+        "scale_to_bounds": true
+      },
+      "cloth_settings": {
+        "enabled": true,
+        "mass": 0.3,
+        "tension_stiffness": 8.0,
+        "compression_stiffness": 6.0,
+        "shear_stiffness": 5.0,
+        "bending_stiffness": 0.8,
+        "air_damping": 0.5,
+        "quality": 12,
+        "time_scale": 1.0,
+        "collision_quality": 8,
+        "self_distance_min": 0.002,
+        "external_collisions": true,
+        "collision_group": 1
+      }
+    },
+    "long_sleeve_shirt": {
+      "enabled": false,
+      "scale": [0.4, 0.3, 0.5],
+      "position_offset": [0.0, 0.0, 0.1],
+      "parent_bones": ["DEF_UpperSpine", "DEF_LeftShoulder", "DEF_RightShoulder"],
+      "material": {
+        "color": [0.8, 0.8, 0.8, 1.0],
+        "roughness": 0.7,
+        "metallic": 0.0,
+        "specular": 0.3
+      },
+      "cloth_settings": {
+        "mass": 0.4,
+        "air_damping": 1.0,
+        "tension_stiffness": 25.0,
+        "compression_stiffness": 25.0,
+        "shear_stiffness": 15.0,
+        "bending_stiffness": 1.5
+      }
+    }
+  },
+  "collar_presets": {
+    "simple_ring": {
+      "height": 0.05,
+      "radius": 0.12
+    },
+    "hood": {
+      "height": 0.15,
+      "depth": 0.12
+    },
+    "furry_cylinder": {
+      "height": 0.08,
+      "radius": 0.14,
+      "fur_length": 0.03
+    }
+  },
+  "head_presets": {
+    "child": {
+      "scale": [0.14, 0.14, 0.14],
+      "neck_radius": 0.07,
+      "skin_tone": [0.96, 0.86, 0.72, 1.0]
+    },
+    "adult": {
+      "scale": [0.18, 0.18, 0.18],
+      "neck_radius": 0.09,
+      "skin_tone": [0.94, 0.82, 0.68, 1.0]
+    },
+    "cartoon": {
+      "scale": [0.2, 0.25, 0.2],
+      "neck_radius": 0.06,
+      "skin_tone": [1.0, 0.9, 0.8, 1.0]
+    }
+  },
+  "collision_settings": {
+    "default_self_distance_min": 0.002,
+    "default_collision_quality": 8,
+    "default_external_collisions": true,
+    "collision_groups": {
+      "coat": 1,
+      "pants": 2,
+      "sleeves": 3,
+      "accessories": 4
+    }
+  },
+  "bone_definitions": {
+    "LowerSpine": {
+      "parent": "LeftHip",
+      "head_control_point": "VIRTUAL_HIP_MIDPOINT",
+      "tail_control_point": "VIRTUAL_SPINE_MIDPOINT",
+      "def_bone": "DEF_LowerSpine",
+      "constraint": "COPY_TO"
+    },
+    "UpperSpine": {
+      "parent": null,
+      "head_control_point": "VIRTUAL_SHOULDER_MIDPOINT",
+      "tail_control_point": "VIRTUAL_SPINE_MIDPOINT",
+      "def_bone": "DEF_UpperSpine",
+      "constraint": "COPY_TO"
+    },
+    "LeftHip": {
+      "parent": "VIRTUAL_HIP_MIDPOINT",
+      "tail_landmark": "LEFT_HIP",
+      "tail_control_point": "CTRL_LEFT_HIP",
+      "def_bone": "DEF_LeftHip",
+      "constraint": "COPY_TAIL_ONLY"
+    },
+    "RightHip": {
+      "parent": "VIRTUAL_HIP_MIDPOINT",
+      "tail_landmark": "RIGHT_HIP",
+      "tail_control_point": "CTRL_RIGHT_HIP",
+      "def_bone": "DEF_RightHip",
+      "constraint": "COPY_TAIL_ONLY"
+    },
+    "LeftShoulder": {
+      "parent": "VIRTUAL_SHOULDER_MIDPOINT",
+      "tail_landmark": "LEFT_SHOULDER",
+      "tail_control_point": "CTRL_LEFT_SHOULDER",
+      "def_bone": "DEF_LeftShoulder",
+      "constraint": "COPY_TAIL_ONLY"
+    },
+    "RightShoulder": {
+      "parent": "VIRTUAL_SHOULDER_MIDPOINT",
+      "tail_landmark": "RIGHT_SHOULDER",
+      "tail_control_point": "CTRL_RIGHT_SHOULDER",
+      "def_bone": "DEF_RightShoulder",
+      "constraint": "COPY_TAIL_ONLY"
+    },
+    "Neck": {
+      "parent": "LeftShoulder",
+      "head_control_point": "VIRTUAL_SHOULDER_MIDPOINT",
+      "tail_control_point": "VIRTUAL_HEAD_BASE",
+      "def_bone": "DEF_Neck",
+      "constraint": "COPY_TO"
+    },
+    "Head": {
+      "parent": "Neck",
+      "tail_landmark": "HEAD_TOP",
+      "tail_control_point": "CTRL_HEAD_TOP",
+      "def_bone": "DEF_Head",
+      "constraint": "COPY_TO"
+    },
+    "LeftUpperArm": {
+      "parent": "LeftShoulder",
+      "tail_landmark": "LEFT_ELBOW",
+      "tail_control_point": "CTRL_LEFT_ELBOW",
+      "def_bone": "DEF_LeftUpperArm",
+      "constraint": "COPY_TAIL_ONLY"
+    },
+    "LeftForearm": {
+      "parent": "LeftUpperArm",
+      "tail_landmark": "LEFT_WRIST",
+      "tail_control_point": "CTRL_LEFT_WRIST",
+      "def_bone": "DEF_LeftForearm",
+      "constraint": "COPY_TO"
+    },
+    "LeftHand": {
+      "parent": "LeftForearm",
+      "tail_landmark": "LEFT_INDEX",
+      "tail_control_point": "CTRL_LEFT_INDEX",
+      "def_bone": "DEF_LeftHand",
+      "constraint": "COPY_TO"
+    },
+    "RightUpperArm": {
+      "parent": "RightShoulder",
+      "tail_landmark": "RIGHT_ELBOW",
+      "tail_control_point": "CTRL_RIGHT_ELBOW",
+      "def_bone": "DEF_RightUpperArm",
+      "constraint": "COPY_TAIL_ONLY"
+    },
+    "RightForearm": {
+      "parent": "RightUpperArm",
+      "tail_landmark": "RIGHT_WRIST",
+      "tail_control_point": "CTRL_RIGHT_WRIST",
+      "def_bone": "DEF_RightForearm",
+      "constraint": "COPY_TO"
+    },
+    "RightHand": {
+      "parent": "RightForearm",
+      "tail_landmark": "RIGHT_INDEX",
+      "tail_control_point": "CTRL_RIGHT_INDEX",
+      "def_bone": "DEF_RightHand",
+      "constraint": "COPY_TO"
+    },
+    "LeftThigh": {
+      "parent": "LeftHip",
+      "tail_landmark": "LEFT_KNEE",
+      "tail_control_point": "CTRL_LEFT_KNEE",
+      "def_bone": "DEF_LeftThigh",
+      "constraint": "COPY_TAIL_ONLY"
+    },
+    "LeftShin": {
+      "parent": "LeftThigh",
+      "tail_landmark": "LEFT_HEEL",
+      "tail_control_point": "CTRL_LEFT_HEEL",
+      "def_bone": "DEF_LeftShin",
+      "constraint": "COPY_TO"
+    },
+    "LeftFoot": {
+      "parent": "LeftShin",
+      "tail_landmark": "LEFT_FOOT_INDEX",
+      "tail_control_point": "CTRL_LEFT_FOOT_INDEX",
+      "def_bone": "DEF_LeftFoot",
+      "constraint": "COPY_TO"
+    },
+    "RightThigh": {
+      "parent": "RightHip",
+      "tail_landmark": "RIGHT_KNEE",
+      "tail_control_point": "CTRL_RIGHT_KNEE",
+      "def_bone": "DEF_RightThigh",
+      "constraint": "COPY_TAIL_ONLY"
+    },
+    "RightShin": {
+      "parent": "RightThigh",
+      "tail_landmark": "RIGHT_HEEL",
+      "tail_control_point": "CTRL_RIGHT_HEEL",
+      "def_bone": "DEF_RightShin",
+      "constraint": "COPY_TO"
+    },
+    "RightFoot": {
+      "parent": "RightShin",
+      "tail_landmark": "RIGHT_FOOT_INDEX",
+      "tail_control_point": "CTRL_RIGHT_FOOT_INDEX",
+      "def_bone": "DEF_RightFoot",
+      "constraint": "COPY_TO"
+    }
+  }
+}
