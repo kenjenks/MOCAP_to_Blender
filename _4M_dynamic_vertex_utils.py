@@ -3,7 +3,14 @@
 import bpy
 import bmesh
 from mathutils import Vector
+from utils import script_log
 
+try:
+    from .4M_cloth_inner import joint_control_systems
+except ImportError:
+    # Fallback if direct import doesn't work
+    joint_control_systems = {}
+    script_log("ERROR: Could not import joint_control_systems, using empty dict")
 
 def register_driver_functions():
     """Register custom functions for use in driver expressions"""
