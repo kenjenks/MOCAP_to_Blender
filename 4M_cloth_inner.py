@@ -56,7 +56,8 @@ def main_execution():
 
         # 7. CREATE CLOTH GARMENTS (REPLACES KID FLESH)
         script_log("=== CREATING CLOTH GARMENTS ===")
-        load_garment_configs()  # First: Load configurations into global garment_configs
+        register_driver_functions()
+        load_garment_configs()  # Load configurations into global garment_configs
         populate_joint_control_systems()
         make_vertex_all_bundles(armature_obj)  # Then: Create bundle systems
         garments_created = create_cloth_garments(armature_obj, figure_name)

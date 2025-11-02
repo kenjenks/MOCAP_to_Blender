@@ -5,6 +5,28 @@ import bmesh
 from mathutils import Vector
 
 
+def register_driver_functions():
+    """Register custom functions for use in driver expressions"""
+
+    def calc_dynamic_weight(distance, radius, max_weight):
+        """Calculate weight based on current distance - simpler version"""
+        if distance <= radius:
+            return max_weight * (1.0 - distance / radius)
+        return 0.0
+
+    def smooth_step_weight(distance, radius, max_weight):
+        """Smooth weight transition at radius boundary"""
+        if distance >= radius:
+            return 0.0
+        t = 1.0 - (distance / radius)
+        # Smooth step interpolation
+        t = t * t * (3.0 - 2.0 * t)
+        return max_weight * t
+
+    # Register with Blender
+    bpy.app.driver_namespace["calc_dynamic_weight"] = calc_dynamic_weight
+    bpy.app.driver_namespace["smooth_step_weight"] = smooth_step_weight
+
 def setup_dynamic_vertex_weights(garment_obj, vertex_bundle_centers, joint_control_systems, script_log):
     """
     Set up dynamic vertex weights that update every frame based on control point positions
@@ -70,9 +92,9 @@ def update_garment_vertex_weights(scene=None):
                 recalculate_vertex_weights(obj, config)
                 config["update_frame"] = frame
                 if frame % 30 == 0:  # Log every 30 frames for debugging
-                    print(f"↻ Updated vertex weights for {obj.name} at frame {frame}")
+                    script_log(f"↻ Updated vertex weights for {obj.name} at frame {frame}")
             except Exception as e:
-                print(f"❌ Error updating vertex weights for {obj.name}: {str(e)}")
+                script_log(f"❌ Error updating vertex weights for {obj.name}: {str(e)}")
 
 def check_positions_changed(config):
     """
@@ -91,7 +113,7 @@ def check_positions_changed(config):
             rpy_empty = joint_control_systems[control_point_name]["rpy_empty"]
             current_positions[bundle_name] = rpy_empty.location.copy()
         else:
-            print(f"⚠ Control point {control_point_name} not found in joint_control_systems")
+            script_log(f"⚠ Control point {control_point_name} not found in joint_control_systems")
 
     # Compare with last positions
     last_positions = config.get("last_positions", {})
@@ -171,7 +193,7 @@ def recalculate_vertex_weights(obj, config):
         radius = get_bundle_radius(control_point_name)
 
         if radius <= 0:
-            print(f"⚠ Zero radius for {control_point_name}, using default 0.1")
+            script_log(f"⚠ Zero radius for {control_point_name}, using default 0.1")
             radius = 0.1
 
         # Create vertex group
@@ -482,7 +504,7 @@ def setup_single_vertex_driver(obj, vert_index, vgroup_name, control_point_name,
         return True
 
     except Exception as e:
-        print(f"❌ Error setting up vertex driver: {str(e)}")
+        script_log(f"❌ Error setting up vertex driver: {str(e)}")
         return False
 
 
@@ -561,7 +583,7 @@ def store_joint_control_systems_in_scene(joint_control_systems):
     for cp_name, system in joint_control_systems.items():
         try:
             # Debug: Log what's actually in the system
-            print(f"DEBUG: Processing {cp_name} - keys: {list(system.keys())}")
+            script_log(f"DEBUG: Processing {cp_name} - keys: {list(system.keys())}")
 
             # Try different possible key names for the empty objects
             xyz_empty = None
@@ -599,15 +621,15 @@ def store_joint_control_systems_in_scene(joint_control_systems):
                     "rpy_empty_name": rpy_empty.name
                 }
             else:
-                print(f"⚠ Could not find valid empties for {cp_name}")
+                script_log(f"⚠ Could not find valid empties for {cp_name}")
                 continue
 
         except Exception as e:
-            print(f"❌ Error processing {cp_name}: {str(e)}")
+            script_log(f"❌ Error processing {cp_name}: {str(e)}")
             continue
 
     scene["joint_control_systems_data"] = systems_data
-    print(f"✓ Stored {len(systems_data)} control systems in scene")
+    script_log(f"✓ Stored {len(systems_data)} control systems in scene")
 
 
 def setup_performance_optimization(script_log):
