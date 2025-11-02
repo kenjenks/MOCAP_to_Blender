@@ -27,40 +27,57 @@ def register_driver_functions():
     bpy.app.driver_namespace["calc_dynamic_weight"] = calc_dynamic_weight
     bpy.app.driver_namespace["smooth_step_weight"] = smooth_step_weight
 
-def setup_dynamic_vertex_weights(garment_obj, vertex_bundle_centers, joint_control_systems, script_log):
-    """
-    Set up dynamic vertex weights that update every frame based on control point positions
-    """
-    if not garment_obj or garment_obj.type != 'MESH':
-        script_log(f"❌ Cannot setup dynamic weights for non-mesh object: {garment_obj}")
+
+def setup_dynamic_vertex_weights(garment_obj, control_point_name, vertex_indices, initial_weights):
+    """Updated version with simplified driver expressions"""
+
+    vertex_group = garment_obj.vertex_groups.get(control_point_name)
+    if not vertex_group:
+        script_log(f"Vertex group {control_point_name} not found in {garment_obj.name}")
         return
 
-    # Convert Vector objects to serializable lists for custom properties
-    serializable_centers = {}
-    for bundle_name, control_point_name in vertex_bundle_centers.items():
-        serializable_centers[bundle_name] = control_point_name
+    if control_point_name not in joint_control_systems:
+        script_log(f"Control point {control_point_name} not in joint_control_systems")
+        return
 
-    # Create a custom property to store vertex bundle configuration
-    garment_obj["vertex_bundle_config"] = {
-        "bundle_centers": serializable_centers,
-        "last_positions": {},
-        "update_frame": 0,
-        "movement_threshold": 0.01,
-        "update_frequency": 3
-    }
+    rpy_empty = joint_control_systems[control_point_name]['rpy_empty']
+    radius = get_bundle_radius(control_point_name)
 
-    # Initialize last positions
-    config = garment_obj["vertex_bundle_config"]
-    for bundle_name, control_point_name in config["bundle_centers"].items():
-        if control_point_name in joint_control_systems:
-            rpy_empty = joint_control_systems[control_point_name]["rpy_empty"]
-            config["last_positions"][bundle_name] = rpy_empty.location.copy()
+    # Find the vertex group index
+    vgroup_index = None
+    for i, vg in enumerate(garment_obj.vertex_groups):
+        if vg.name == control_point_name:
+            vgroup_index = i
+            break
 
-    # Add frame change handler if not already present
-    if update_garment_vertex_weights not in bpy.app.handlers.frame_change_pre:
-        bpy.app.handlers.frame_change_pre.append(update_garment_vertex_weights)
+    if vgroup_index is None:
+        print(f"Could not find index for vertex group {control_point_name}")
+        return
 
-    script_log(f"✓ Set up dynamic vertex weights for {garment_obj.name} with {len(vertex_bundle_centers)} bundles")
+    for i, vert_index in enumerate(vertex_indices):
+        try:
+            driver = garment_obj.data.vertices[vert_index].driver_add(f"groups[{vgroup_index}].weight")
+
+            # SIMPLIFIED EXPRESSION:
+            driver.driver.expression = f"max(0, 1 - (distance / {radius})) * {max_weight}"
+
+            driver.driver.type = 'SCRIPTED'
+
+            # Set up distance variable
+            distance_var = driver.driver.variables.new()
+            distance_var.name = "distance"
+            distance_var.type = 'LOC_DIFF'
+
+            distance_var.targets[0].id = garment_obj
+            distance_var.targets[0].data_path = f"data.vertices[{vert_index}].co"
+
+            distance_var.targets[1].id = rpy_empty
+            distance_var.targets[1].data_path = "matrix_world.translation"
+
+            script_log(f"Set up driver for vertex {vert_index} with max_weight {initial_weights[i]}")
+
+        except Exception as e:
+            script_log(f"Error setting up driver for vertex {vert_index}: {e}")
 
 
 def update_garment_vertex_weights(scene=None):
