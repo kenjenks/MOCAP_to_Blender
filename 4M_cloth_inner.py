@@ -3291,7 +3291,7 @@ def create_pants(armature_obj, figure_name, side, length_type="full"):
     heel_xyz, heel_rpy = joint_control_systems.get(f"CTRL_{side}_HEEL", (None, None))
 
     if not all([hip_xyz, hip_rpy, knee_xyz, knee_rpy, heel_xyz, heel_rpy]):
-        print(f"✗ Missing control points for {side} pants")
+        print(f"ERROR: Missing control points for {side} pants")
         return None
 
     # Get VB empties
