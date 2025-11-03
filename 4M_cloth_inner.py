@@ -3281,128 +3281,139 @@ def create_boot(armature_obj, figure_name, garment_config, global_cloth_settings
 
 ##########################################################################################
 
-def create_pants(side, config):
-    """
-    Create pants using spheres at joints and tapered cylinders between them.
-    """
+def create_pants(armature_obj, figure_name, garment_config, global_cloth_settings, side="left"):
+    """Create pants using spheres at joints and tapered cylinders between them"""
     script_log(f"Creating {side} pants with sphere-based approach...")
 
-    # Get the appropriate config section
-    pants_config = config.get(f"{side}_pants", {})
-    if not pants_config:
-        script_log(f"Warning: No configuration found for {side}_pants", type='WARNING')
-        return
+    # Get pants configuration
+    diameter_hip = garment_config.get("diameter_hip", 0.18)
+    diameter_knee = garment_config.get("diameter_knee", 0.14)
+    diameter_ankle = garment_config.get("diameter_ankle", 0.12)
+    segments = garment_config.get("segments", 32)
 
-    # Get material configuration
-    material_config = pants_config.get("material", {})
-    segments = pants_config.get("segments", 32)
+    # Get correct control point names
+    side_upper = side.upper()
+    hip_control_name = f"CTRL_{side_upper}_HIP"
+    knee_control_name = f"CTRL_{side_upper}_KNEE"
+    heel_control_name = f"CTRL_{side_upper}_HEEL"  # Using HEEL instead of ankle
 
-    # Get diameter values
-    diameter_hip = pants_config.get("diameter_hip", 0.18)
-    diameter_knee = pants_config.get("diameter_knee", 0.14)
-    diameter_ankle = pants_config.get("diameter_ankle", 0.12)
+    # Get joint control systems using correct names
+    hip_control = joint_control_systems.get(hip_control_name, {})
+    knee_control = joint_control_systems.get(knee_control_name, {})
+    heel_control = joint_control_systems.get(heel_control_name, {})
 
-    # Get joint control systems
-    hip_control = joint_control_systems.get(f"{side}_hip", {})
-    knee_control = joint_control_systems.get(f"{side}_knee", {})
-    ankle_control = joint_control_systems.get(f"{side}_ankle", {})
-
-    if not all([hip_control, knee_control, ankle_control]):
-        script_log(f"Warning: Missing joint control systems for {side} pants", type='WARNING')
-        return
+    if not all([hip_control, knee_control, heel_control]):
+        script_log(
+            f"Warning: Missing joint control systems for {side} pants - looking for {hip_control_name}, {knee_control_name}, {heel_control_name}")
+        return None
 
     hip_rpy_empty = hip_control.get('rpy_empty')
     knee_rpy_empty = knee_control.get('rpy_empty')
-    ankle_rpy_empty = ankle_control.get('rpy_empty')
+    heel_rpy_empty = heel_control.get('rpy_empty')
 
-    if not all([hip_rpy_empty, knee_rpy_empty, ankle_rpy_empty]):
-        script_log(f"Warning: Missing RPY empties for {side} pants", type='WARNING')
-        return
+    if not all([hip_rpy_empty, knee_rpy_empty, heel_rpy_empty]):
+        script_log(f"Warning: Missing RPY empties for {side} pants")
+        return None
 
-    # Get bone objects
-    thigh_bone = bpy.data.objects.get(f"thigh_{side}")
-    shin_bone = bpy.data.objects.get(f"shin_{side}")
+    # Get correct bone names
+    if side == "left":
+        hip_bone_name = "DEF_LeftHip"
+        thigh_bone_name = "DEF_LeftThigh"
+        shin_bone_name = "DEF_LeftShin"
+    else:
+        hip_bone_name = "DEF_RightHip"
+        thigh_bone_name = "DEF_RightThigh"
+        shin_bone_name = "DEF_RightShin"
+
+    # Get bone objects using correct names
+    thigh_bone = armature_obj.pose.bones.get(thigh_bone_name)
+    shin_bone = armature_obj.pose.bones.get(shin_bone_name)
 
     if not thigh_bone or not shin_bone:
-        script_log(f"Warning: Missing bones for {side} pants", type='WARNING')
-        return
+        script_log(f"Warning: Missing bones for {side} pants - looking for {thigh_bone_name}, {shin_bone_name}")
+        return None
 
-    # Store created objects for return
+    # Store created objects
     pants_objects = []
 
-    # Create spheres at joints
-    # Hip sphere
+    # Create spheres at joints (parented to RPY empties)
     script_log(f"Creating hip sphere for {side} pants...")
     hip_sphere = create_sphere(
-        name=f"{side}_pants_hip_sphere",
+        name=f"{figure_name}_{side}_pants_hip_sphere",
         diameter=diameter_hip,
         segments=segments,
         location=hip_rpy_empty.location
     )
     hip_sphere.parent = hip_rpy_empty
-    apply_material_from_config(hip_sphere, material_config)
+    apply_material_from_config(hip_sphere, f"{side}_pants")
     pants_objects.append(hip_sphere)
     script_log(f"Created hip sphere: {hip_sphere.name}")
 
     # Knee sphere
     script_log(f"Creating knee sphere for {side} pants...")
     knee_sphere = create_sphere(
-        name=f"{side}_pants_knee_sphere",
+        name=f"{figure_name}_{side}_pants_knee_sphere",
         diameter=diameter_knee,
         segments=segments,
         location=knee_rpy_empty.location
     )
     knee_sphere.parent = knee_rpy_empty
-    apply_material_from_config(knee_sphere, material_config)
+    apply_material_from_config(knee_sphere, f"{side}_pants")
     pants_objects.append(knee_sphere)
     script_log(f"Created knee sphere: {knee_sphere.name}")
 
-    # Ankle sphere
+    # Ankle/Heel sphere (using heel control point)
     script_log(f"Creating ankle sphere for {side} pants...")
     ankle_sphere = create_sphere(
-        name=f"{side}_pants_ankle_sphere",
+        name=f"{figure_name}_{side}_pants_ankle_sphere",
         diameter=diameter_ankle,
         segments=segments,
-        location=ankle_rpy_empty.location
+        location=heel_rpy_empty.location
     )
-    ankle_sphere.parent = ankle_rpy_empty
-    apply_material_from_config(ankle_sphere, material_config)
+    ankle_sphere.parent = heel_rpy_empty
+    apply_material_from_config(ankle_sphere, f"{side}_pants")
     pants_objects.append(ankle_sphere)
     script_log(f"Created ankle sphere: {ankle_sphere.name}")
 
-    # Create tapered cylinders
-    # Thigh cylinder (hip to knee)
+    # Create tapered cylinders (parented to bones)
     script_log(f"Creating thigh cylinder for {side} pants...")
     thigh_cylinder = create_tapered_cylinder(
-        name=f"{side}_pants_thigh_cylinder",
+        name=f"{figure_name}_{side}_pants_thigh_cylinder",
         start_diameter=diameter_hip,
         end_diameter=diameter_knee,
         segments=segments,
         start_location=hip_rpy_empty.location,
         end_location=knee_rpy_empty.location
     )
-    thigh_cylinder.parent = thigh_bone
-    apply_material_from_config(thigh_cylinder, material_config)
+    # Parent to armature with bone constraint
+    thigh_cylinder.parent = armature_obj
+    thigh_cylinder.parent_type = 'BONE'
+    thigh_cylinder.parent_bone = thigh_bone_name
+    apply_material_from_config(thigh_cylinder, f"{side}_pants")
     pants_objects.append(thigh_cylinder)
     script_log(f"Created thigh cylinder: {thigh_cylinder.name}")
 
-    # Shin cylinder (knee to ankle)
     script_log(f"Creating shin cylinder for {side} pants...")
     shin_cylinder = create_tapered_cylinder(
-        name=f"{side}_pants_shin_cylinder",
+        name=f"{figure_name}_{side}_pants_shin_cylinder",
         start_diameter=diameter_knee,
         end_diameter=diameter_ankle,
         segments=segments,
         start_location=knee_rpy_empty.location,
-        end_location=ankle_rpy_empty.location
+        end_location=heel_rpy_empty.location  # Using heel location for ankle
     )
-    shin_cylinder.parent = shin_bone
-    apply_material_from_config(shin_cylinder, material_config)
+    # Parent to armature with bone constraint
+    shin_cylinder.parent = armature_obj
+    shin_cylinder.parent_type = 'BONE'
+    shin_cylinder.parent_bone = shin_bone_name
+    apply_material_from_config(shin_cylinder, f"{side}_pants")
     pants_objects.append(shin_cylinder)
     script_log(f"Created shin cylinder: {shin_cylinder.name}")
 
     script_log(f"Successfully created {side} pants with {len(pants_objects)} components")
-    return pants_objects
+
+    # Return the main pants object (hip sphere) for compatibility
+    return pants_objects[0] if pants_objects else None
 
 ##########################################################################################
 
