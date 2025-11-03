@@ -298,6 +298,17 @@ def get_bundle_center(control_point_name):
 
 ##########################################################################################
 
+def create_empty_at_location(name, location=(0,0,0), size=0.1, empty_type='PLAIN_AXES'):
+    """Create an empty object at specified location"""
+    empty_data = bpy.data.objects.new(name, None)
+    empty_data.empty_display_size = size
+    empty_data.empty_display_type = empty_type
+    bpy.context.collection.objects.link(empty_data)
+    empty_data.location = location
+    return empty_data
+
+##########################################################################################
+
 def populate_joint_control_systems():
     """Populate joint_control_systems with control point data for vertex bundles"""
     global joint_control_systems
