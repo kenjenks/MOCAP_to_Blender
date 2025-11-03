@@ -3369,9 +3369,6 @@ def create_pants(armature_obj, figure_name, side="left"):
     else:
         script_log(f"⚠ Index control point {index_control_point} not found, wrist rotation will be neutral")
 
-    # Continue with existing pants creation code...
-    # [Rest of the existing create_pants function remains the same]
-
     # Get correct bone names
     if side == "left":
         thigh_bone_name = "DEF_LeftThigh"
@@ -3383,7 +3380,9 @@ def create_pants(armature_obj, figure_name, side="left"):
     # Store created objects
     pants_objects = []
 
-    # Create spheres at joints (parented to VB empties at their exact locations)
+    # =========================================================================
+    # CREATE SPHERES WITH PROPER VERTEX GROUP SETUP (NOT DIRECT PARENTING)
+    # =========================================================================
     script_log(f"Creating hip sphere for {side} pants...")
     hip_sphere = create_sphere(
         name=f"{figure_name}_{side}_pants_hip_sphere",
@@ -3391,7 +3390,8 @@ def create_pants(armature_obj, figure_name, side="left"):
         segments=segments,
         location=hip_vb_empty.location  # Use RPY empty's actual location
     )
-    hip_sphere.parent = hip_vb_empty  # Parent to RPY empty for rotation
+    # DO NOT PARENT DIRECTLY - use vertex groups and armature modifier
+    setup_pants_component_vertex_groups(hip_sphere, hip_control_name, armature_obj)
     apply_material_from_config(hip_sphere, f"{side}_pants")
     pants_objects.append(hip_sphere)
     script_log(f"Created hip sphere at {hip_vb_empty.location}")
@@ -3404,7 +3404,7 @@ def create_pants(armature_obj, figure_name, side="left"):
         segments=segments,
         location=knee_vb_empty.location  # Use RPY empty's actual location
     )
-    knee_sphere.parent = knee_vb_empty  # Parent to RPY empty for rotation
+    setup_pants_component_vertex_groups(knee_sphere, knee_control_name, armature_obj)
     apply_material_from_config(knee_sphere, f"{side}_pants")
     pants_objects.append(knee_sphere)
     script_log(f"Created knee sphere at {knee_vb_empty.location}")
@@ -3417,12 +3417,14 @@ def create_pants(armature_obj, figure_name, side="left"):
         segments=segments,
         location=heel_vb_empty.location  # Use RPY empty's actual location
     )
-    ankle_sphere.parent = heel_vb_empty  # Parent to RPY empty for rotation
+    setup_pants_component_vertex_groups(ankle_sphere, heel_control_name, armature_obj)
     apply_material_from_config(ankle_sphere, f"{side}_pants")
     pants_objects.append(ankle_sphere)
     script_log(f"Created ankle sphere at {heel_vb_empty.location}")
 
-    # Create tapered cylinders between the actual joint positions
+    # =========================================================================
+    # CREATE CYLINDERS WITH PROPER VERTEX GROUP SETUP
+    # =========================================================================
     script_log(f"Creating thigh cylinder for {side} pants...")
     thigh_cylinder = create_tapered_cylinder(
         name=f"{figure_name}_{side}_pants_thigh_cylinder",
@@ -3432,10 +3434,7 @@ def create_pants(armature_obj, figure_name, side="left"):
         start_location=hip_vb_empty.location,  # Use actual hip position
         end_location=knee_vb_empty.location  # Use actual knee position
     )
-    # Parent to armature with bone constraint
-    thigh_cylinder.parent = armature_obj
-    thigh_cylinder.parent_type = 'BONE'
-    thigh_cylinder.parent_bone = thigh_bone_name
+    setup_pants_cylinder_vertex_groups(thigh_cylinder, thigh_bone_name, armature_obj)
     apply_material_from_config(thigh_cylinder, f"{side}_pants")
     pants_objects.append(thigh_cylinder)
     script_log(f"Created thigh cylinder from {hip_vb_empty.location} to {knee_vb_empty.location}")
@@ -3449,19 +3448,70 @@ def create_pants(armature_obj, figure_name, side="left"):
         start_location=knee_vb_empty.location,  # Use actual knee position
         end_location=heel_vb_empty.location  # Use actual heel position
     )
-    # Parent to armature with bone constraint
-    shin_cylinder.parent = armature_obj
-    shin_cylinder.parent_type = 'BONE'
-    shin_cylinder.parent_bone = shin_bone_name
+    setup_pants_cylinder_vertex_groups(shin_cylinder, shin_bone_name, armature_obj)
     apply_material_from_config(shin_cylinder, f"{side}_pants")
     pants_objects.append(shin_cylinder)
     script_log(f"Created shin cylinder from {knee_vb_empty.location} to {heel_vb_empty.location}")
 
     script_log(f"Successfully created {side} pants with {len(pants_objects)} components")
     script_log(f"✓ Z-axis constraints: Hip→Elbow, Knee→Wrist, Wrist→Index")
+    script_log(f"✓ Proper vertex group setup for all components")
 
     # Return the main pants object (hip sphere) for compatibility
     return pants_objects[0] if pants_objects else None
+
+
+def setup_pants_component_vertex_groups(obj, control_point_name, armature_obj):
+    """Setup vertex groups for pants spheres to follow control points"""
+    # Clear any existing vertex groups
+    for vg in list(obj.vertex_groups):
+        obj.vertex_groups.remove(vg)
+
+    # Remove any existing armature modifiers
+    for mod in list(obj.modifiers):
+        if mod.type == 'ARMATURE':
+            obj.modifiers.remove(mod)
+
+    # Create vertex group for the control point
+    control_group = obj.vertex_groups.new(name=control_point_name)
+
+    # Assign full weight to all vertices
+    for i in range(len(obj.data.vertices)):
+        control_group.add([i], 1.0, 'REPLACE')
+
+    # Add armature modifier
+    armature_mod = obj.modifiers.new(name="Armature", type='ARMATURE')
+    armature_mod.object = armature_obj
+    armature_mod.use_vertex_groups = True
+
+    script_log(f"✓ Setup vertex groups for {obj.name} to follow {control_point_name}")
+
+##########################################################################################
+
+def setup_pants_cylinder_vertex_groups(obj, bone_name, armature_obj):
+    """Setup vertex groups for pants cylinders to follow bones"""
+    # Clear any existing vertex groups
+    for vg in list(obj.vertex_groups):
+        obj.vertex_groups.remove(vg)
+
+    # Remove any existing armature modifiers
+    for mod in list(obj.modifiers):
+        if mod.type == 'ARMATURE':
+            obj.modifiers.remove(mod)
+
+    # Create vertex group for the bone
+    bone_group = obj.vertex_groups.new(name=bone_name)
+
+    # Assign full weight to all vertices
+    for i in range(len(obj.data.vertices)):
+        bone_group.add([i], 1.0, 'REPLACE')
+
+    # Add armature modifier
+    armature_mod = obj.modifiers.new(name="Armature", type='ARMATURE')
+    armature_mod.object = armature_obj
+    armature_mod.use_vertex_groups = True
+
+    script_log(f"✓ Setup vertex groups for {obj.name} to follow {bone_name}")
 
 ##########################################################################################
 
