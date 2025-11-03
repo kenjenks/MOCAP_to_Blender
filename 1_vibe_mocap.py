@@ -106,33 +106,19 @@ def setup_vibe_environment():
                 # Try to import VIBE modules
                 from lib.models import VIBE
                 from lib.dataset.inference import Inference
-                if utils_available:
-                    script_log("VIBE dependencies loaded successfully")
-                else:
-                    print("VIBE dependencies loaded successfully")
+                script_log("VIBE dependencies loaded successfully")
                 return True
             except ImportError as e:
-                if utils_available:
-                    script_log(f"VIBE modules import failed: {e}")
-                    script_log("This is normal if VIBE model weights are not downloaded yet")
-                else:
-                    print(f"VIBE modules import failed: {e}")
-                    print("This is normal if VIBE model weights are not downloaded yet")
+                script_log(f"VIBE modules import failed: {e}")
+                script_log("This is normal if VIBE model weights are not downloaded yet")
                 return False
         else:
-            if utils_available:
-                script_log(f"VIBE directory not found at: {vibe_dir}")
-            else:
-                print(f"VIBE directory not found at: {vibe_dir}")
+            script_log(f"VIBE directory not found at: {vibe_dir}")
             return False
 
     except ImportError as e:
-        if utils_available:
-            script_log(f"VIBE dependencies not available: {e}")
-            script_log("Please install: pip install torch torchvision smplx opencv-python numpy")
-        else:
-            print(f"VIBE dependencies not available: {e}")
-            print("Please install: pip install torch torchvision smplx opencv-python numpy")
+        script_log(f"VIBE dependencies not available: {e}")
+        script_log("Please install: pip install torch torchvision smplx opencv-python numpy")
         return False
 
 
@@ -153,34 +139,19 @@ def download_vibe_model_weights():
         model_path = os.path.join(model_dir, 'vibe_model_w_3dpw.pth')
 
         if not os.path.exists(model_path):
-            if utils_available:
-                script_log("Downloading VIBE model weights...")
-            else:
-                print("Downloading VIBE model weights...")
+            script_log("Downloading VIBE model weights...")
             gdown.download(model_url, model_path, quiet=False)
-            if utils_available:
-                script_log(f"Model weights downloaded to: {model_path}")
-            else:
-                print(f"Model weights downloaded to: {model_path}")
+            script_log(f"Model weights downloaded to: {model_path}")
         else:
-            if utils_available:
-                script_log(f"Model weights already exist at: {model_path}")
-            else:
-                print(f"Model weights already exist at: {model_path}")
+            script_log(f"Model weights already exist at: {model_path}")
 
         return model_path
 
     except ImportError:
-        if utils_available:
-            script_log("gdown not available. Please install: pip install gdown")
-        else:
-            print("gdown not available. Please install: pip install gdown")
+        script_log("gdown not available. Please install: pip install gdown")
         return None
     except Exception as e:
-        if utils_available:
-            script_log(f"Error downloading model weights: {e}")
-        else:
-            print(f"Error downloading model weights: {e}")
+        script_log(f"Error downloading model weights: {e}")
         return None
 
 
@@ -189,10 +160,7 @@ def run_vibe_inference(video_path, output_dir):
     Run VIBE inference on video file
     """
     try:
-        if utils_available:
-            script_log(f"Starting VIBE inference on: {video_path}")
-        else:
-            print(f"Starting VIBE inference on: {video_path}")
+        script_log(f"Starting VIBE inference on: {video_path}")
 
         # Import here to avoid issues if VIBE not available
         import torch
@@ -202,18 +170,12 @@ def run_vibe_inference(video_path, output_dir):
         import numpy as np
 
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        if utils_available:
-            script_log(f"Using device: {device}")
-        else:
-            print(f"Using device: {device}")
+        script_log(f"Using device: {device}")
 
         # Download model weights
         model_path = download_vibe_model_weights()
         if not model_path:
-            if utils_available:
-                script_log("Could not download model weights, using mock implementation")
-            else:
-                print("Could not download model weights, using mock implementation")
+            script_log("WARNING: Could not download model weights, using mock implementation")
             return mock_vibe_inference(video_path)
 
         # Initialize VIBE model
@@ -230,10 +192,7 @@ def run_vibe_inference(video_path, output_dir):
         model.load_state_dict(checkpoint['model'], strict=False)
         model.eval()
 
-        if utils_available:
-            script_log("VIBE model loaded successfully")
-        else:
-            print("VIBE model loaded successfully")
+        script_log("VIBE model loaded successfully")
 
         # Initialize inference module
         # Note: You may need to provide proper config here
@@ -244,25 +203,17 @@ def run_vibe_inference(video_path, output_dir):
         )
 
         # Run inference
-        if utils_available:
-            script_log("Running VIBE inference...")
-        else:
-            print("Running VIBE inference...")
+        script_log("Running VIBE inference...")
         results = inference.run_on_video(video_path)
 
         return results
 
     except Exception as e:
-        if utils_available:
-            script_log(f"Error during VIBE inference: {e}")
-            import traceback
-            script_log(f"Traceback: {traceback.format_exc()}")
-            script_log("Falling back to mock implementation")
-        else:
-            print(f"Error during VIBE inference: {e}")
-            import traceback
-            print(f"Traceback: {traceback.format_exc()}")
-            print("Falling back to mock implementation")
+        script_log(f"Error during VIBE inference: {e}")
+        import traceback
+        script_log(f"Traceback: {traceback.format_exc()}")
+        script_log("Falling back to mock implementation")
+
         # Fall back to mock implementation for testing
         return mock_vibe_inference(video_path)
 
@@ -271,10 +222,7 @@ def mock_vibe_inference(video_path):
     """
     Mock VIBE inference for testing - replace with actual VIBE code
     """
-    if utils_available:
-        script_log(f"Mock VIBE inference on: {video_path}")
-    else:
-        print(f"Mock VIBE inference on: {video_path}")
+    script_log(f"Mock VIBE inference on: {video_path}")
 
     # Get video info to determine frame count
     import cv2
@@ -283,10 +231,7 @@ def mock_vibe_inference(video_path):
     fps = cap.get(cv2.CAP_PROP_FPS)
     cap.release()
 
-    if utils_available:
-        script_log(f"Video info: {frame_count} frames, {fps} FPS")
-    else:
-        print(f"Video info: {frame_count} frames, {fps} FPS")
+    script_log(f"Video info: {frame_count} frames, {fps} FPS")
 
     # Create mock VIBE output structure
     mock_output = {
@@ -329,10 +274,7 @@ def convert_vibe_to_mediapipe_format(vibe_output):
     """
     Convert VIBE output to MediaPipe JSON format
     """
-    if utils_available:
-        script_log("Converting VIBE output to MediaPipe format")
-    else:
-        print("Converting VIBE output to MediaPipe format")
+    script_log("Converting VIBE output to MediaPipe format")
 
     # VIBE to MediaPipe joint mapping (simplified)
     # VIBE uses SMPL 24 joints + extra joints = 49 total
@@ -383,10 +325,7 @@ def main():
     """
     Main function to run VIBE motion capture extraction
     """
-    if utils_available:
-        script_log("Starting VIBE motion capture extraction")
-    else:
-        print("Starting VIBE motion capture extraction")
+    script_log("Starting VIBE motion capture extraction")
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='VIBE Motion Capture Extraction')
