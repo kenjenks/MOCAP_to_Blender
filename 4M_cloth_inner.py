@@ -5408,7 +5408,7 @@ def make_vertex_all_bundles(armature_obj):
     """Create vertex bundle systems with two-empties architecture"""
     global joint_control_systems
 
-    print("=== CREATING VERTEX BUNDLE SYSTEMS WITH DYNAMIC WEIGHTING ===")
+    script_log("=== CREATING VERTEX BUNDLE SYSTEMS WITH DYNAMIC WEIGHTING ===")
 
     # First, check if VB empties already exist
     existing_vb_empties = {}
@@ -5416,7 +5416,7 @@ def make_vertex_all_bundles(armature_obj):
         vb_name = f"VB_{cp_name}"
         if vb_name in bpy.data.objects:
             existing_vb_empties[cp_name] = bpy.data.objects[vb_name]
-            print(f"✓ Found existing VB empty: {vb_name}")
+            script_log(f"✓ Found existing VB empty: {vb_name}")
 
     # Create missing VB empties with proper parenting and constraints
     for cp_name, system_data in joint_control_systems.items():
@@ -5426,16 +5426,16 @@ def make_vertex_all_bundles(armature_obj):
         if cp_name in existing_vb_empties:
             # Use existing VB empty
             vb_empty = existing_vb_empties[cp_name]
-            print(f"✓ Using existing VB empty for {cp_name}")
+            script_log(f"✓ Using existing VB empty for {cp_name}")
         else:
             # Create new VB empty at the RPY empty's location
             vb_empty = create_empty_at_location(vb_name, location=rpy_empty.location)
-            print(f"✓ Created dynamic vertex bundle empty for {cp_name}")
+            script_log(f"✓ Created dynamic vertex bundle empty for {cp_name}")
 
-        # CRITICAL: Parent VB empty to RPY empty
+        # Parent VB empty to RPY empty
         vb_empty.parent = rpy_empty
 
-        # CRITICAL: Set local position to zero (align with parent)
+        # Set local position to zero (align with parent)
         vb_empty.location = (0, 0, 0)
 
         # CRITICAL: Add COPY_LOCATION constraint to follow parent
@@ -5453,9 +5453,9 @@ def make_vertex_all_bundles(armature_obj):
         # Store the VB empty in the system data for later use
         system_data['vb_empty'] = vb_empty
 
-        print(f"✓ Parented and constrained {vb_name} to {cp_name}")
+        script_log(f"✓ Parented and constrained {vb_name} to {cp_name}")
 
-    print("✓ Vertex bundle systems created with proper parenting and constraints")
+    script_log("✓ Vertex bundle systems created with proper parenting and constraints")
     return joint_control_systems
 
 # Helper function for garment creators to easily add dynamic weighting
