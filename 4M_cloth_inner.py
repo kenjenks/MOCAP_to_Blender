@@ -4016,36 +4016,26 @@ def create_coat(armature_obj, figure_name):
         script_log("DEBUG: Setting up dynamic vertex weights using two-empties system for coat")
 
         # Get control point names for the two-empties system
-        left_shoulder_cp = "left_shoulder"
-        right_shoulder_cp = "right_shoulder"
-        spine_chest_cp = "spine_chest"
-        spine_waist_cp = "spine_waist"
+        left_shoulder_cp = "CTRL_LEFT_SHOULDER"
+        right_shoulder_cp = "CTRL_RIGHT_SHOULDER"
 
         # Get vertex bundle centers and radii from two-empties system
         left_shoulder_center = get_bundle_center(left_shoulder_cp)
         right_shoulder_center = get_bundle_center(right_shoulder_cp)
-        spine_chest_center = get_bundle_center(spine_chest_cp)
-        spine_waist_center = get_bundle_center(spine_waist_cp)
 
         # Get radii with garment-specific adjustments
         left_shoulder_radius = get_bundle_radius(left_shoulder_cp)
         right_shoulder_radius = get_bundle_radius(right_shoulder_cp)
-        spine_chest_radius = get_bundle_radius(spine_chest_cp) * 1.3  # Expanded for chest
-        spine_waist_radius = get_bundle_radius(spine_waist_cp) * 1.2  # Expanded for waist
 
         # Initialize vertex groups and store data for dynamic setup
         vertex_data = {
             left_shoulder_cp: [],
-            right_shoulder_cp: [],
-            spine_chest_cp: [],
-            spine_waist_cp: []
+            right_shoulder_cp: []
         }
 
         # Create vertex groups for two-empties system
         left_shoulder_group = coat_obj.vertex_groups.new(name=left_shoulder_cp)
         right_shoulder_group = coat_obj.vertex_groups.new(name=right_shoulder_cp)
-        spine_chest_group = coat_obj.vertex_groups.new(name=spine_chest_cp)
-        spine_waist_group = coat_obj.vertex_groups.new(name=spine_waist_cp)
 
         # Apply initial vertex group weighting AND collect data for dynamic setup
         mesh = coat_obj.data
@@ -4087,42 +4077,6 @@ def create_coat(armature_obj, figure_name):
                     right_shoulder_group.add([vert.index], final_weight, 'REPLACE')
                     vertex_data[right_shoulder_cp].append((vert.index, final_weight))
 
-            # SPINE CHEST WEIGHTING
-            dist_to_spine_chest = (vert_co - spine_chest_center).length
-            if dist_to_spine_chest <= spine_chest_radius:
-                base_weight = 1.0 - (dist_to_spine_chest / spine_chest_radius)
-
-                # Chest influences upper-mid section
-                chest_zone = abs(vert_height + coat_height * 0.2)
-                height_factor = max(0.0, 1.0 - (chest_zone / (coat_height * 0.4)))
-                final_weight = base_weight * height_factor
-
-                # Chest-specific: maintain strong central influence
-                if abs(vert_co.x) < torso_radius * 0.3:  # Central front/back
-                    final_weight *= 1.1
-
-                if final_weight > 0.01:
-                    spine_chest_group.add([vert.index], final_weight, 'REPLACE')
-                    vertex_data[spine_chest_cp].append((vert.index, final_weight))
-
-            # SPINE WAIST WEIGHTING
-            dist_to_spine_waist = (vert_co - spine_waist_center).length
-            if dist_to_spine_waist <= spine_waist_radius:
-                base_weight = 1.0 - (dist_to_spine_waist / spine_waist_radius)
-
-                # Waist influences lower section
-                waist_zone = max(0.0, vert_height + coat_height * 0.6)
-                height_factor = max(0.0, 1.0 - (waist_zone / (coat_height * 0.4)))
-                final_weight = base_weight * height_factor
-
-                # Waist-specific: reduce influence on very bottom edge
-                if vert_height < -coat_height * 0.8:  # Bottom 20%
-                    final_weight *= 0.7
-
-                if final_weight > 0.01:
-                    spine_waist_group.add([vert.index], final_weight, 'REPLACE')
-                    vertex_data[spine_waist_cp].append((vert.index, final_weight))
-
         # SET UP DYNAMIC VERTEX WEIGHTS - NEW FUNCTIONALITY
         script_log("Setting up dynamic vertex weights for coat...")
         drivers_created = 0
@@ -4145,7 +4099,7 @@ def create_coat(armature_obj, figure_name):
         # Combine weights from all control points
         for i in range(len(coat_obj.data.vertices)):
             max_weight = 0.0
-            for group_name in [left_shoulder_cp, right_shoulder_cp, spine_chest_cp, spine_waist_cp]:
+            for group_name in [left_shoulder_cp, right_shoulder_cp]:
                 group = coat_obj.vertex_groups.get(group_name)
                 if group:
                     try:
@@ -4250,7 +4204,7 @@ def create_coat(armature_obj, figure_name):
         script_log(f"✓ Front split: {'CREATED' if coat_length == 'long' else 'NOT APPLIED'}")
         script_log(f"✓ Cloth simulation: {'ENABLED' if cloth_config.get('enabled', True) else 'DISABLED'}")
         script_log(f"✓ Dynamic vertex drivers: {drivers_created} created")
-        script_log(f"✓ Control points: {left_shoulder_cp}, {right_shoulder_cp}, {spine_chest_cp}, {spine_waist_cp}")
+        script_log(f"✓ Control points: {left_shoulder_cp}, {right_shoulder_cp}")
         script_log(f"✓ Using two-empties system for dynamic vertex weight updates during animation")
 
         return coat_obj
