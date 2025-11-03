@@ -116,7 +116,7 @@ def setup_dynamic_vertex_weights(garment_obj, control_point_name, vertex_indices
             driver = garment_obj.data.vertices[vert_index].driver_add(f"groups[{vgroup_index}].weight")
 
             # SIMPLIFIED EXPRESSION:
-            driver.driver.expression = f"max(0, 1 - (distance / {radius})) * {max_weight}"
+            driver.driver.expression = f"max(0, 1 - (distance / {radius})) * {initial_weights[i]}"
 
             driver.driver.type = 'SCRIPTED'
 
@@ -214,7 +214,7 @@ def get_joint_control_systems_from_scene():
     """
     Retrieve joint_control_systems from scene custom properties
     """
-        scene = bpy.context.scene
+    scene = bpy.context.scene
     if "joint_control_systems_data" in scene:
         # Reconstruct the joint_control_systems from scene data
         systems_data = scene["joint_control_systems_data"]
