@@ -88,24 +88,23 @@ def register_driver_functions():
     bpy.app.driver_namespace["smooth_step_weight"] = smooth_step_weight
 
 
-def setup_dynamic_vertex_weights(garment_obj, control_point_name, vertex_indices, initial_weights):
-    """Updated version with simplified driver expressions"""
-
-    global _joint_control_systems
+def setup_dynamic_vertex_weights(garment_obj, control_point_name, vertex_indices, initial_weights,
+                                 joint_control_systems):
+    """Set up drivers to make vertex weights follow moving control points"""
 
     vertex_group = garment_obj.vertex_groups.get(control_point_name)
     if not vertex_group:
         script_log(f"Vertex group {control_point_name} not found in {garment_obj.name}")
         return
 
-    if control_point_name not in _joint_control_systems:
+    if control_point_name not in joint_control_systems:
         script_log(f"Control point {control_point_name} not in joint_control_systems")
         return
 
-    rpy_empty = _joint_control_systems[control_point_name]['rpy_empty']
+    rpy_empty = joint_control_systems[control_point_name]['rpy_empty']
     radius = get_bundle_radius(control_point_name)
 
-    # Find the vertex group index
+    # Find the correct vertex group index FIRST
     vgroup_index = None
     for i, vg in enumerate(garment_obj.vertex_groups):
         if vg.name == control_point_name:
@@ -113,15 +112,18 @@ def setup_dynamic_vertex_weights(garment_obj, control_point_name, vertex_indices
             break
 
     if vgroup_index is None:
-        print(f"Could not find index for vertex group {control_point_name}")
+        script_log(f"ERROR: Could not find vertex group index for {control_point_name}")
         return
+
+    script_log(f"DEBUG: Using vertex group index {vgroup_index} for {control_point_name}")
 
     for i, vert_index in enumerate(vertex_indices):
         try:
+            # Use the correct vertex group index
             driver = garment_obj.data.vertices[vert_index].driver_add(f"groups[{vgroup_index}].weight")
 
             # SIMPLIFIED EXPRESSION:
-            driver.driver.expression = f"max(0, 1 - (distance / {radius})) * {initial_weights[i]}"
+            driver.driver.expression = f"max(0, 1 - (distance / {radius})) * {max_weight}"
 
             driver.driver.type = 'SCRIPTED'
 
@@ -130,17 +132,18 @@ def setup_dynamic_vertex_weights(garment_obj, control_point_name, vertex_indices
             distance_var.name = "distance"
             distance_var.type = 'LOC_DIFF'
 
+            # Target 1: Vertex position (in object space)
             distance_var.targets[0].id = garment_obj
             distance_var.targets[0].data_path = f"data.vertices[{vert_index}].co"
 
+            # Target 2: RPY empty position (in world space)
             distance_var.targets[1].id = rpy_empty
             distance_var.targets[1].data_path = "matrix_world.translation"
 
-            script_log(f"Set up driver for vertex {vert_index} with max_weight {initial_weights[i]}")
+            script_log(f"Set up driver for vertex {vert_index} in group {vgroup_index}")
 
         except Exception as e:
             script_log(f"Error setting up driver for vertex {vert_index}: {e}")
-
 
 def update_garment_vertex_weights(scene=None):
     """
