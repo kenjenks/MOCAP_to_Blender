@@ -82,61 +82,32 @@ def register_driver_functions():
     bpy.app.driver_namespace["smooth_step_weight"] = smooth_step_weight
 
 
-def setup_dynamic_vertex_weights(garment_obj, control_point_name, vertex_indices, initial_weights, joint_control_systems):
-    """Set up drivers to make vertex weights follow moving control points"""
+def setup_dynamic_vertex_weights(garment_obj, control_point_name, vertex_indices, initial_weights,
+                                 joint_control_systems):
+    """Debug version to see what driver properties are available"""
 
-    vertex_group = garment_obj.vertex_groups.get(control_point_name)
-    if not vertex_group:
-        script_log(f"Vertex group {control_point_name} not found in {garment_obj.name}")
-        return
+    script_log(f"DEBUG: Checking available driver properties for vertex groups...")
 
-    if control_point_name not in joint_control_systems:
-        script_log(f"Control point {control_point_name} not in joint_control_systems")
-        return
-
-    rpy_empty = joint_control_systems[control_point_name]['rpy_empty']
-    radius = get_bundle_radius(control_point_name)
-
-    # Find the correct vertex group index FIRST
-    vgroup_index = None
+    # List all vertex groups
     for i, vg in enumerate(garment_obj.vertex_groups):
-        if vg.name == control_point_name:
-            vgroup_index = i
-            break
+        script_log(f"Vertex group [{i}]: {vg.name}")
 
-    if vgroup_index is None:
-        script_log(f"ERROR: Could not find vertex group index for {control_point_name}")
-        return
+    # Try to access a vertex and see what properties are available
+    if vertex_indices:
+        test_vert = garment_obj.data.vertices[vertex_indices[0]]
+        script_log(f"DEBUG: Vertex {vertex_indices[0]} properties: {dir(test_vert)}")
 
-    script_log(f"DEBUG: Using vertex group index {vgroup_index} for {control_point_name}")
-
-    for i, vert_index in enumerate(vertex_indices):
+        # Try to see what driver_add accepts
         try:
-            # Use the correct vertex group index
-            driver = garment_obj.data.vertices[vert_index].driver_add(f"groups[{vgroup_index}].weight")
-
-            # SIMPLIFIED EXPRESSION:
-            driver.driver.expression = f"max(0, 1 - (distance / {radius})) * {initial_weights[i]}"
-
-            driver.driver.type = 'SCRIPTED'
-
-            # Set up distance variable
-            distance_var = driver.driver.variables.new()
-            distance_var.name = "distance"
-            distance_var.type = 'LOC_DIFF'
-
-            # Target 1: Vertex position (in object space)
-            distance_var.targets[0].id = garment_obj
-            distance_var.targets[0].data_path = f"data.vertices[{vert_index}].co"
-
-            # Target 2: RPY empty position (in world space)
-            distance_var.targets[1].id = rpy_empty
-            distance_var.targets[1].data_path = "matrix_world.translation"
-
-            script_log(f"Set up driver for vertex {vert_index} in group {vgroup_index}")
-
+            # Test if groups is a property
+            if hasattr(test_vert, 'groups'):
+                script_log(f"DEBUG: Vertex has groups attribute with {len(test_vert.groups)} entries")
+                for j, grp in enumerate(test_vert.groups):
+                    script_log(f"  Group[{j}]: group={grp.group}, weight={grp.weight}")
         except Exception as e:
-            script_log(f"Error setting up driver for vertex {vert_index}: {e}")
+            script_log(f"DEBUG: Error inspecting vertex groups: {e}")
+
+    script_log(f"DEBUG: Skipping driver setup for now - property not found")
 
 def update_garment_vertex_weights(scene=None):
     """
