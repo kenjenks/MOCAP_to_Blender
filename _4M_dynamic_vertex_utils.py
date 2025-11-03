@@ -59,12 +59,6 @@ except Exception as e:
     print(f"FATAL ERROR during utility setup: {e}")
     sys.exit(1)
 
-global _joint_control_systems
-
-def set_global_joint_control_systems(outer_joint_control_systems):
-    global _joint_control_systems
-    _joint_control_systems = outer_joint_control_systems
-
 def register_driver_functions():
     """Register custom functions for use in driver expressions"""
 
@@ -88,8 +82,7 @@ def register_driver_functions():
     bpy.app.driver_namespace["smooth_step_weight"] = smooth_step_weight
 
 
-def setup_dynamic_vertex_weights(garment_obj, control_point_name, vertex_indices, initial_weights,
-                                 joint_control_systems):
+def setup_dynamic_vertex_weights(garment_obj, control_point_name, vertex_indices, initial_weights, joint_control_systems):
     """Set up drivers to make vertex weights follow moving control points"""
 
     vertex_group = garment_obj.vertex_groups.get(control_point_name)
@@ -182,6 +175,7 @@ def check_positions_changed(config):
     """
     Check if control point positions have changed significantly
     """
+
     current_positions = {}
     threshold = config.get("movement_threshold", 0.01)
 
@@ -195,7 +189,7 @@ def check_positions_changed(config):
             rpy_empty = joint_control_systems[control_point_name]["rpy_empty"]
             current_positions[bundle_name] = rpy_empty.location.copy()
         else:
-            script_log(f"⚠ Control point {control_point_name} not found in joint_control_systems")
+            script_log(f"ERROR: Control point {control_point_name} not found in joint_control_systems")
 
     # Compare with last positions
     last_positions = config.get("last_positions", {})
@@ -220,7 +214,7 @@ def get_joint_control_systems_from_scene():
     """
     Retrieve joint_control_systems from scene custom properties
     """
-    scene = bpy.context.scene
+        scene = bpy.context.scene
     if "joint_control_systems_data" in scene:
         # Reconstruct the joint_control_systems from scene data
         systems_data = scene["joint_control_systems_data"]

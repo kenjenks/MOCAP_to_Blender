@@ -3573,7 +3573,7 @@ def create_pants(armature_obj, figure_name, side="left"):
                 initial_weights = [vw[1] for vw in vertices_weights]
 
                 script_log(f"Setting up {len(vertex_indices)} dynamic vertices for {point_name}")
-                setup_dynamic_vertex_weights(pants_obj, point_name, vertex_indices, initial_weights)
+                setup_dynamic_vertex_weights(pants_obj, point_name, vertex_indices, initial_weights, joint_control_systems)
                 drivers_created += len(vertex_indices)
             else:
                 script_log(f"No vertices found for {point_name}, skipping dynamic setup")
@@ -4133,7 +4133,7 @@ def create_coat(armature_obj, figure_name, garment_config, global_cloth_settings
                 initial_weights = [vw[1] for vw in vertices_weights]
 
                 script_log(f"Setting up {len(vertex_indices)} dynamic vertices for {point_name}")
-                setup_dynamic_vertex_weights(coat_obj, point_name, vertex_indices, initial_weights)
+                setup_dynamic_vertex_weights(coat_obj, point_name, vertex_indices, initial_weights, joint_control_systems)
                 drivers_created += len(vertex_indices)
             else:
                 script_log(f"No vertices found for {point_name}, skipping dynamic setup")
