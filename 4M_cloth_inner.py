@@ -335,7 +335,6 @@ def populate_joint_control_systems():
 
         # Head control points
         "CTRL_HEAD_TOP": {"radius": 0.08, "type": "head_neck"},
-        "CTRL_HEAD_BASE": {"radius": 0.075, "type": "neck_coordination"},
         "CTRL_NOSE": {"radius": 0.03, "type": "head_tracking"},
     }
 
