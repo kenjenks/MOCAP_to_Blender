@@ -3281,95 +3281,193 @@ def create_boot(armature_obj, figure_name, garment_config, global_cloth_settings
 
 ##########################################################################################
 
-def create_pants(armature_obj, figure_name, side, length_type="full"):
-    """Create pants with vertex groups assigned to VB empties for direct control"""
-    print(f"Creating continuous {side} pants with coordinated vertex bundles...")
+def create_pants(side, config):
+    """
+    Create pants using spheres at joints and tapered cylinders between them.
+    """
+    script_log(f"Creating {side} pants with sphere-based approach...")
 
-    # Get control point systems
-    hip_xyz, hip_rpy = joint_control_systems.get(f"CTRL_{side}_HIP", (None, None))
-    knee_xyz, knee_rpy = joint_control_systems.get(f"CTRL_{side}_KNEE", (None, None))
-    heel_xyz, heel_rpy = joint_control_systems.get(f"CTRL_{side}_HEEL", (None, None))
+    # Get the appropriate config section
+    pants_config = config.get(f"{side}_pants", {})
+    if not pants_config:
+        script_log(f"Warning: No configuration found for {side}_pants", type='WARNING')
+        return
 
-    if not all([hip_xyz, hip_rpy, knee_xyz, knee_rpy, heel_xyz, heel_rpy]):
-        print(f"ERROR: Missing control points for {side} pants")
-        return None
+    # Get material configuration
+    material_config = pants_config.get("material", {})
+    segments = pants_config.get("segments", 32)
 
-    # Get VB empties
-    hip_vb = bpy.data.objects.get(f"VB_CTRL_{side}_HIP")
-    knee_vb = bpy.data.objects.get(f"VB_CTRL_{side}_KNEE")
-    heel_vb = bpy.data.objects.get(f"VB_CTRL_{side}_HEEL")
+    # Get diameter values
+    diameter_hip = pants_config.get("diameter_hip", 0.18)
+    diameter_knee = pants_config.get("diameter_knee", 0.14)
+    diameter_ankle = pants_config.get("diameter_ankle", 0.12)
 
-    if not all([hip_vb, knee_vb, heel_vb]):
-        print(f"✗ Missing vertex bundle empties for {side} pants")
-        return None
+    # Get joint control systems
+    hip_control = joint_control_systems.get(f"{side}_hip", {})
+    knee_control = joint_control_systems.get(f"{side}_knee", {})
+    ankle_control = joint_control_systems.get(f"{side}_ankle", {})
 
-    # Calculate lengths for pants geometry
-    thigh_length = (hip_rpy.location - knee_rpy.location).length
-    shin_length = (knee_rpy.location - heel_rpy.location).length
-    total_length = thigh_length + shin_length
+    if not all([hip_control, knee_control, ankle_control]):
+        script_log(f"Warning: Missing joint control systems for {side} pants", type='WARNING')
+        return
 
-    print(f"DEBUG: {side} pants - Thigh length: {thigh_length:.3f}, Shin length: {shin_length:.3f}")
-    print(f"DEBUG: {side} pants - Total length: {total_length:.3f} (stopping at ankle)")
+    hip_rpy_empty = hip_control.get('rpy_empty')
+    knee_rpy_empty = knee_control.get('rpy_empty')
+    ankle_rpy_empty = ankle_control.get('rpy_empty')
 
-    # Create pants cylinder
-    pants_obj = create_pants_cylinder(side, total_length)
-    if not pants_obj:
-        print(f"✗ Failed to create pants cylinder for {side}")
-        return None
+    if not all([hip_rpy_empty, knee_rpy_empty, ankle_rpy_empty]):
+        script_log(f"Warning: Missing RPY empties for {side} pants", type='WARNING')
+        return
 
-    # Set up bone constraints (EXISTING FUNCTIONALITY - KEEP)
-    print("DEBUG: Setting up bone constraints for pants movement...")
-    armature_obj = bpy.data.objects.get("Main_Rig")
-    if armature_obj:
-        setup_pants_bone_constraints(armature_obj, side)
-        print(f"DEBUG: {side} pants - Bone constraints: 3 added")
-    else:
-        print(f"✗ No armature found for pants constraints")
+    # Get bone objects
+    thigh_bone = bpy.data.objects.get(f"thigh_{side}")
+    shin_bone = bpy.data.objects.get(f"shin_{side}")
 
-    # PARENT TO RPY EMPTY (EXISTING FUNCTIONALITY - KEEP)
-    pants_obj.parent = hip_rpy
-    pants_obj.parent_type = 'OBJECT'
-    print(f"✓ Parented {pants_obj.name} to {hip_rpy.name}")
+    if not thigh_bone or not shin_bone:
+        script_log(f"Warning: Missing bones for {side} pants", type='WARNING')
+        return
 
-    # SET UP VERTEX GROUPS TO VB EMPTIES (FIXED VERSION)
-    print("DEBUG: Setting up vertex groups using VB empties system...")
-    setup_pants_vertex_groups_to_vb(pants_obj, side, hip_vb, knee_vb, heel_vb)
+    # Store created objects for return
+    pants_objects = []
 
-    # Set up cloth simulation (EXISTING FUNCTIONALITY - KEEP)
-    print("DEBUG: Adding cloth simulation for pants (simple collisions)...")
-    setup_pants_cloth_simulation(pants_obj, side)
-    print("✓ Pants cloth: self-collision + simple collisions (will interact with coat)")
+    # Create spheres at joints
+    # Hip sphere
+    script_log(f"Creating hip sphere for {side} pants...")
+    hip_sphere = create_sphere(
+        name=f"{side}_pants_hip_sphere",
+        diameter=diameter_hip,
+        segments=segments,
+        location=hip_rpy_empty.location
+    )
+    hip_sphere.parent = hip_rpy_empty
+    apply_material_from_config(hip_sphere, material_config)
+    pants_objects.append(hip_sphere)
+    script_log(f"Created hip sphere: {hip_sphere.name}")
 
-    # Set up armature modifier (EXISTING FUNCTIONALITY - KEEP)
-    print("DEBUG: Setting up armature modifier and vertex groups for pants...")
-    setup_pants_armature_modifier(pants_obj, armature_obj)
-    print("✓ Added armature modifier with vertex group deformation")
+    # Knee sphere
+    script_log(f"Creating knee sphere for {side} pants...")
+    knee_sphere = create_sphere(
+        name=f"{side}_pants_knee_sphere",
+        diameter=diameter_knee,
+        segments=segments,
+        location=knee_rpy_empty.location
+    )
+    knee_sphere.parent = knee_rpy_empty
+    apply_material_from_config(knee_sphere, material_config)
+    pants_objects.append(knee_sphere)
+    script_log(f"Created knee sphere: {knee_sphere.name}")
 
-    # Apply material (EXISTING FUNCTIONALITY - KEEP)
-    material = bpy.data.materials.get("Pants_Material")
-    if material:
-        pants_obj.data.materials.append(material)
-        print(f"✓ Applied material 'Pants_Material' to {pants_obj.name}")
+    # Ankle sphere
+    script_log(f"Creating ankle sphere for {side} pants...")
+    ankle_sphere = create_sphere(
+        name=f"{side}_pants_ankle_sphere",
+        diameter=diameter_ankle,
+        segments=segments,
+        location=ankle_rpy_empty.location
+    )
+    ankle_sphere.parent = ankle_rpy_empty
+    apply_material_from_config(ankle_sphere, material_config)
+    pants_objects.append(ankle_sphere)
+    script_log(f"Created ankle sphere: {ankle_sphere.name}")
 
-    # Set modifier order (EXISTING FUNCTIONALITY - KEEP)
-    print("DEBUG: Setting proper modifier order for pants...")
-    setup_pants_modifier_order(pants_obj)
+    # Create tapered cylinders
+    # Thigh cylinder (hip to knee)
+    script_log(f"Creating thigh cylinder for {side} pants...")
+    thigh_cylinder = create_tapered_cylinder(
+        name=f"{side}_pants_thigh_cylinder",
+        start_diameter=diameter_hip,
+        end_diameter=diameter_knee,
+        segments=segments,
+        start_location=hip_rpy_empty.location,
+        end_location=knee_rpy_empty.location
+    )
+    thigh_cylinder.parent = thigh_bone
+    apply_material_from_config(thigh_cylinder, material_config)
+    pants_objects.append(thigh_cylinder)
+    script_log(f"Created thigh cylinder: {thigh_cylinder.name}")
 
-    # Verify setup (EXISTING FUNCTIONALITY - KEEP)
-    print("DEBUG: Verifying pants setup...")
-    verify_pants_setup(pants_obj, side)
+    # Shin cylinder (knee to ankle)
+    script_log(f"Creating shin cylinder for {side} pants...")
+    shin_cylinder = create_tapered_cylinder(
+        name=f"{side}_pants_shin_cylinder",
+        start_diameter=diameter_knee,
+        end_diameter=diameter_ankle,
+        segments=segments,
+        start_location=knee_rpy_empty.location,
+        end_location=ankle_rpy_empty.location
+    )
+    shin_cylinder.parent = shin_bone
+    apply_material_from_config(shin_cylinder, material_config)
+    pants_objects.append(shin_cylinder)
+    script_log(f"Created shin cylinder: {shin_cylinder.name}")
 
-    print(f"✓ Created {side} pants with VB empties vertex weighting")
-    print(f"✓ Bone constraints: 3 STRETCH_TO constraints added")
-    print(f"✓ Vertices weighted to VB_CTRL_{side}_HIP, VB_CTRL_{side}_KNEE, and VB_CTRL_{side}_HEEL")
-    print(f"✓ Armature modifier configured for deformation")
-    print(f"✓ Pants object parented to {hip_rpy.name}")
-    print(f"✓ Cloth pinned to combined anchors")
-    print(f"✓ Simple collisions enabled (will interact with coat)")
-    print(f"✓ Using VB empties system for direct vertex control during animation")
+    script_log(f"Successfully created {side} pants with {len(pants_objects)} components")
+    return pants_objects
 
-    return pants_obj
+##########################################################################################
 
+def create_sphere(name, diameter, segments, location):
+    """Create a sphere mesh object."""
+    radius = diameter / 2.0
+
+    # Create sphere mesh
+    bpy.ops.mesh.primitive_uv_sphere_add(
+        segments=segments,
+        ring_count=segments // 2,
+        radius=radius,
+        location=location
+    )
+
+    sphere = bpy.context.active_object
+    sphere.name = name
+
+    return sphere
+
+##########################################################################################
+
+def create_tapered_cylinder(name, start_diameter, end_diameter, segments, start_location, end_location):
+    """Create a tapered cylinder using Blender's Simple Deform taper."""
+    # Calculate direction and length
+    direction = end_location - start_location
+    length = direction.length
+
+    # Create cylinder aligned with Z-axis at start location
+    bpy.ops.mesh.primitive_cylinder_add(
+        vertices=segments,
+        radius=start_diameter / 2.0,  # Base radius at start
+        depth=length,  # Total length
+        location=start_location
+    )
+
+    cylinder = bpy.context.active_object
+    cylinder.name = name
+
+    # Calculate taper factor (1.0 = no taper, <1.0 = taper down, >1.0 = taper up)
+    taper_factor = end_diameter / start_diameter
+
+    # Add taper modifier
+    taper_modifier = cylinder.modifiers.new(name="Taper", type='SIMPLE_DEFORM')
+    taper_modifier.deform_method = 'TAPER'
+    taper_modifier.factor = taper_factor - 1.0  # 0 = no taper
+    taper_modifier.deform_axis = 'Z'  # Taper along the cylinder's length
+    taper_modifier.lock_x = False
+    taper_modifier.lock_y = False
+
+    # Apply the modifier to make the taper permanent
+    bpy.context.view_layer.objects.active = cylinder
+    bpy.ops.object.modifier_apply(modifier="Taper")
+
+    # Rotate cylinder to point from start to end location
+    up_vector = Vector((0, 0, 1))
+    if direction.length > 0.001:  # Avoid division by zero
+        direction.normalize()
+        rotation_quat = up_vector.rotation_difference(direction)
+        cylinder.rotation_mode = 'QUATERNION'
+        cylinder.rotation_quaternion = rotation_quat
+
+    return cylinder
+
+##########################################################################################
 
 def setup_pants_vertex_groups_to_vb(pants_obj, side, hip_vb, knee_vb, heel_vb):
     """Assign pants vertices to VERTEX BUNDLE empties for direct control"""
