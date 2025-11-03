@@ -278,20 +278,23 @@ def get_bundle_radius_from_config(joint_type, side):
 ##########################################################################################
 
 def get_bundle_radius(control_point_name):
-    """Get radius of vertex bundle from joint_control_systems (simple getter)"""
-    if control_point_name not in joint_control_systems:
-        return 0.0
-    return joint_control_systems[control_point_name]["radius"]
+    """Get radius for vertex bundle influence"""
+    if control_point_name in joint_control_systems:
+        return joint_control_systems[control_point_name].get('radius', 0.1)
+    return 0.1
 
 ##########################################################################################
 
 def get_bundle_center(control_point_name):
-    """Get current world center of vertex bundle"""
-    if control_point_name not in joint_control_systems:
-        script_log(f"ERROR: {control_point_name} NOT in joint_control_systems")
-        script_log(f"INFO: Available systems: {list(joint_control_systems.keys())}")
-        return None
-    return joint_control_systems[control_point_name]["rpy_empty"].location
+    """Get current position of vertex bundle center (RPY empty)"""
+    if control_point_name in joint_control_systems:
+        system_data = joint_control_systems[control_point_name]
+        # Return the RPY empty's world location
+        return system_data['rpy_empty'].location
+
+    script_log(f"ERROR: {control_point_name} NOT in joint_control_systems")
+    script_log(f"INFO: Available systems: {list(joint_control_systems.keys())}")
+    return None
 
 ##########################################################################################
 
@@ -5393,170 +5396,60 @@ def add_dynamic_weighting_to_garment(garment_obj, control_point_names, bone_name
     script_log(f"  - Control points: {control_point_names}")
     script_log(f"  - Bone groups: {bone_names}")
 
-def make_vertex_all_bundles(armature_obj):
-    """Create vertex bundle systems for all control points"""
-    script_log("=== CREATING VERTEX BUNDLE SYSTEMS WITH DYNAMIC WEIGHTING ===")
-    script_log("Setting up centralized dynamic vertex weighting...")
 
-    # Temporary debug - add this before the setup call
-    script_log("DEBUG: joint_control_systems structure:")
-    for cp_name, system in joint_control_systems.items(): # DEBUG
-        script_log(f"  {cp_name}: keys = {list(system.keys())}") # DEBUG
-        for key, value in system.items(): # DEBUG
-            if hasattr(value, 'name'): # DEBUG
-                script_log(f"    {key}: {value.name} ({type(value).__name__})") # DEBUG
-            else: # DEBUG
-                script_log(f"    {key}: {value} ({type(value).__name__})") # DEBUG
+def make_vertex_all_bundles():
+    """Create vertex bundle systems with two-empties architecture"""
+    global joint_control_systems
 
-    success = setup_comprehensive_dynamic_system(joint_control_systems, script_log)
+    print("=== CREATING VERTEX BUNDLE SYSTEMS WITH DYNAMIC WEIGHTING ===")
 
-    if success:
-        script_log("✓ Centralized dynamic weighting system ready")
-        script_log("✓ All garments will update vertex weights automatically")
-    else:
-        script_log("❌ Failed to setup dynamic vertex weighting system")
-        return None
+    # First, check if VB empties already exist
+    existing_vb_empties = {}
+    for cp_name in joint_control_systems.keys():
+        vb_name = f"VB_{cp_name}"
+        if vb_name in bpy.data.objects:
+            existing_vb_empties[cp_name] = bpy.data.objects[vb_name]
+            print(f"✓ Found existing VB empty: {vb_name}")
 
-        # Initialize vertex bundle systems dictionary
-        vertex_bundle_systems = {}
+    # Create missing VB empties with proper parenting and constraints
+    for cp_name, system_data in joint_control_systems.items():
+        vb_name = f"VB_{cp_name}"
+        rpy_empty = system_data['rpy_empty']
 
-        # Create vertex bundle for each control point
-        for cp_name, system in joint_control_systems.items():
-            bundle_system = create_vertex_bundle_system(cp_name, system, armature_obj)
-            if bundle_system:
-                vertex_bundle_systems[cp_name] = bundle_system
-                script_log(f"  ✓ Created vertex bundle system for {cp_name}")
-            else:
-                script_log(f"  ⚠ Failed to create vertex bundle system for {cp_name}")
+        if cp_name in existing_vb_empties:
+            # Use existing VB empty
+            vb_empty = existing_vb_empties[cp_name]
+            print(f"✓ Using existing VB empty for {cp_name}")
+        else:
+            # Create new VB empty at the RPY empty's location
+            vb_empty = create_empty_at_location(vb_name, location=rpy_empty.location)
+            print(f"✓ Created dynamic vertex bundle empty for {cp_name}")
 
-        script_log(f"✓ Created {len(vertex_bundle_systems)} vertex bundle systems")
+        # CRITICAL: Parent VB empty to RPY empty
+        vb_empty.parent = rpy_empty
 
-        # Set up cross-bundle influences for smooth transitions
-        setup_cross_bundle_influences(vertex_bundle_systems)
+        # CRITICAL: Set local position to zero (align with parent)
+        vb_empty.location = (0, 0, 0)
 
-        # Initialize dynamic weighting system
-        setup_dynamic_weight_updaters(vertex_bundle_systems)
+        # CRITICAL: Add COPY_LOCATION constraint to follow parent
+        # Remove any existing COPY_LOCATION constraints first
+        for constraint in vb_empty.constraints:
+            if constraint.type == 'COPY_LOCATION':
+                vb_empty.constraints.remove(constraint)
 
-        # Store in global for garment access
-        global joint_vertex_bundles
-        joint_vertex_bundles = vertex_bundle_systems
+        copy_loc = vb_empty.constraints.new('COPY_LOCATION')
+        copy_loc.target = rpy_empty
+        copy_loc.use_x = True
+        copy_loc.use_y = True
+        copy_loc.use_z = True
 
-        return vertex_bundle_systems
+        # Store the VB empty in the system data for later use
+        system_data['vb_empty'] = vb_empty
 
-    def create_vertex_bundle_system(control_point_name, control_system, armature_obj):
-        """Create a vertex bundle system for a specific control point"""
-        try:
-            # Get the RPY empty for current position
-            rpy_empty = control_system["rpy_empty"]
+        print(f"✓ Parented and constrained {vb_name} to {cp_name}")
 
-            # Calculate appropriate radius based on control point type
-            radius = calculate_bundle_radius(control_point_name)
-
-            # Create bundle system
-            bundle_system = {
-                "control_point": control_point_name,
-                "center_empty": rpy_empty,
-                "radius": radius,
-                "influence_vertices": [],
-                "weight_map": {},
-                "dynamic_center": True  # Flag for dynamic positioning
-            }
-
-            # Set up automatic position updates
-            setup_bundle_position_tracking(bundle_system, control_system)
-
-            return bundle_system
-
-        except Exception as e:
-            script_log(f"ERROR creating vertex bundle for {control_point_name}: {str(e)}")
-            return None
-
-    def calculate_bundle_radius(control_point_name):
-        """Calculate appropriate influence radius for different control points"""
-        radius_map = {
-            "CTRL_LEFT_HIP": 0.15, "CTRL_RIGHT_HIP": 0.15,
-            "CTRL_LEFT_KNEE": 0.12, "CTRL_RIGHT_KNEE": 0.12,
-            "CTRL_LEFT_HEEL": 0.08, "CTRL_RIGHT_HEEL": 0.08,
-            "CTRL_LEFT_SHOULDER": 0.12, "CTRL_RIGHT_SHOULDER": 0.12,
-            "CTRL_LEFT_ELBOW": 0.10, "CTRL_RIGHT_ELBOW": 0.10,
-            "CTRL_LEFT_WRIST": 0.06, "CTRL_RIGHT_WRIST": 0.06,
-            "CTRL_HEAD_TOP": 0.08, "CTRL_NOSE": 0.05
-        }
-
-        return radius_map.get(control_point_name, 0.1)
-
-    def setup_bundle_position_tracking(bundle_system, control_system):
-        """Set up automatic position tracking for vertex bundle"""
-        # With the new dynamic system, the bundle center automatically follows
-        # the RPY empty, so no additional tracking is needed
-        pass
-
-    def setup_cross_bundle_influences(vertex_bundle_systems):
-        """Set up smooth transitions between overlapping vertex bundles"""
-        script_log("Setting up cross-bundle influences...")
-
-        # Identify overlapping bundles and set up blending
-        bundle_pairs = []
-        bundle_names = list(vertex_bundle_systems.keys())
-
-        for i, name1 in enumerate(bundle_names):
-            for name2 in bundle_names[i + 1:]:
-                # Check if these bundles should influence each other
-                if should_bundles_blend(name1, name2):
-                    bundle_pairs.append((name1, name2))
-
-        script_log(f"  ✓ Set up {len(bundle_pairs)} cross-bundle influence pairs")
-        return bundle_pairs
-
-    def should_bundles_blend(bundle_name1, bundle_name2):
-        """Determine if two vertex bundles should have blended influences"""
-        # Bundles on the same limb should blend
-        same_limb_pairs = [
-            ("HIP", "KNEE"), ("KNEE", "HEEL"),
-            ("SHOULDER", "ELBOW"), ("ELBOW", "WRIST")
-        ]
-
-        for pair in same_limb_pairs:
-            if pair[0] in bundle_name1 and pair[1] in bundle_name2:
-                return True
-            if pair[1] in bundle_name1 and pair[0] in bundle_name2:
-                return True
-
-        return False
-
-    def setup_dynamic_weight_updaters(vertex_bundle_systems):
-        """Set up systems for dynamic weight updates during animation"""
-        script_log("Setting up dynamic weight updaters...")
-
-        # The comprehensive dynamic system already handles frame-by-frame updates
-        # This function is now mostly for legacy compatibility
-
-        script_log("  ✓ Dynamic weight updates enabled via comprehensive system")
-        return True
-
-    def get_bundle_center(control_point_name):
-        """
-        Get current center position of a vertex bundle
-        NOW USES DYNAMIC POSITION from the comprehensive system
-        """
-        # Use the new dynamic function that gets current position
-        return get_dynamic_bundle_center(control_point_name, joint_control_systems, script_log)
-
-    def get_bundle_radius_from_config(joint_type, side=None):
-        """
-        Get bundle radius from configuration based on joint type and side
-        """
-        radius_config = {
-            "hip": 0.15, "knee": 0.12, "ankle": 0.08,
-            "shoulder": 0.12, "elbow": 0.10, "wrist": 0.06,
-            "head": 0.08, "nose": 0.05
-        }
-
-        # Handle side-specific joints
-        if side and joint_type in ["hip", "knee", "ankle", "shoulder", "elbow", "wrist"]:
-            return radius_config.get(joint_type, 0.1)
-
-        return radius_config.get(joint_type, 0.1)
+    print("✓ Vertex bundle systems created with proper parenting and constraints")
+    return joint_control_systems
 
 # Helper function for garment creators to easily add dynamic weighting
 def setup_garment_dynamic_weighting(garment_obj, side, garment_type):
