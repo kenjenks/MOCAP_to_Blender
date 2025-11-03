@@ -3725,17 +3725,17 @@ def create_pants(armature_obj, figure_name, side="left"):
 
 ##########################################################################################
 
-def create_coat(armature_obj, figure_name, garment_config, global_cloth_settings):
+def create_coat(armature_obj, figure_name):
     """Create coat torso garment with shoulder coordination and length variations using two-empties system"""
     script_log("Creating coat torso garment...")
 
     # Get coat configuration
-    coat_length = garment_config.get("coat_length", "short")  # "short" or "long"
-    radial_segments = garment_config.get("radial_segments", 32)
-    longitudinal_segments = garment_config.get("longitudinal_segments", 24)
-    torso_radius = garment_config.get("torso_radius", 0.25)
-    coat_height = garment_config.get("coat_height", 0.8)
-    puffiness = garment_config.get("puffiness", 1.05)
+    coat_length = garment_configs.get("coat_length", "short")  # "short" or "long"
+    radial_segments = garment_configs.get("radial_segments", 32)
+    longitudinal_segments = garment_configs.get("longitudinal_segments", 24)
+    torso_radius = garment_configs.get("torso_radius", 0.25)
+    coat_height = garment_configs.get("coat_height", 0.8)
+    puffiness = garment_configs.get("puffiness", 1.05)
 
     # GET SHOULDER DIAMETER FROM SLEEVE CONFIG
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -3816,7 +3816,7 @@ def create_coat(armature_obj, figure_name, garment_config, global_cloth_settings
         script_log("DEBUG: Adding vertical subdivisions for coat flexibility...")
 
         # Get longitudinal segments from config
-        longitudinal_segments = garment_config.get("longitudinal_segments", 24)
+        longitudinal_segments = garment_configs.get("longitudinal_segments", 24)
         # Subtract 1 because the cylinder already has top and bottom rings
         number_cuts = max(1, longitudinal_segments - 1)
 
@@ -3849,7 +3849,7 @@ def create_coat(armature_obj, figure_name, garment_config, global_cloth_settings
             script_log("DEBUG: Creating front split and deleting bottom face for long coat...")
 
             # Get skirt_start_ratio from config with fallback
-            long_coat_settings = garment_config.get("coat_length_settings", {}).get("long", {})
+            long_coat_settings = garment_configs.get("coat_length_settings", {}).get("long", {})
             skirt_start_ratio = long_coat_settings.get("skirt_start_ratio", 0.6)  # Default to 0.6 if not specified
 
             # Calculate skirt region dimensions (bottom portion of coat)
@@ -3973,7 +3973,7 @@ def create_coat(armature_obj, figure_name, garment_config, global_cloth_settings
         # =========================================================================
         # STEP 6: SMOOTH ARMPIT AREAS
         # =========================================================================
-        smooth_armpits = garment_config.get("smooth_armpits", False)
+        smooth_armpits = garment_configs.get("smooth_armpits", False)
         if smooth_armpits:
             script_log("DEBUG: Smoothing armpit areas...")
 
@@ -4174,7 +4174,7 @@ def create_coat(armature_obj, figure_name, garment_config, global_cloth_settings
         # STEP 9: ADD CLOTH SIMULATION WITH SIMPLE COLLISIONS
         # =========================================================================
         script_log("DEBUG: Adding cloth simulation with simple collisions...")
-        cloth_config = garment_config.get("cloth_settings", {})
+        cloth_config = garment_configs.get("cloth_settings", {})
 
         if cloth_config.get("enabled", True):
             cloth_mod = coat_obj.modifiers.new(name="Cloth", type='CLOTH')
