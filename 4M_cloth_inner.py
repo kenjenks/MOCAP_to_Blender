@@ -3281,15 +3281,15 @@ def create_boot(armature_obj, figure_name, garment_config, global_cloth_settings
 
 ##########################################################################################
 
-def create_pants(armature_obj, figure_name, garment_config, global_cloth_settings, side="left"):
+def create_pants(armature_obj, figure_name, side="left"):
     """Create pants using spheres at joints and tapered cylinders between them"""
     script_log(f"Creating {side} pants with sphere-based approach...")
 
     # Get pants configuration
-    diameter_hip = garment_config.get("diameter_hip", 0.18)
-    diameter_knee = garment_config.get("diameter_knee", 0.14)
-    diameter_ankle = garment_config.get("diameter_ankle", 0.12)
-    segments = garment_config.get("segments", 32)
+    diameter_hip = garment_configs.get("diameter_hip", 0.18)
+    diameter_knee = garment_configs.get("diameter_knee", 0.14)
+    diameter_ankle = garment_configs.get("diameter_ankle", 0.12)
+    segments = garment_configs.get("segments", 32)
 
     # Get correct control point names
     side_upper = side.upper()
@@ -3307,9 +3307,9 @@ def create_pants(armature_obj, figure_name, garment_config, global_cloth_setting
             f"Warning: Missing joint control systems for {side} pants - looking for {hip_control_name}, {knee_control_name}, {heel_control_name}")
         return None
 
-    hip_rpy_empty = hip_control.get('rpy_empty')
-    knee_rpy_empty = knee_control.get('rpy_empty')
-    heel_rpy_empty = heel_control.get('rpy_empty')
+    hip_rpy_empty = hip_control.get(f"VB_{hip_control_name}")
+    knee_rpy_empty = knee_control.get(f"VB_{knee_control_name}")
+    heel_rpy_empty = heel_control.get(f"VB_{heel_control_name}")
 
     if not all([hip_rpy_empty, knee_rpy_empty, heel_rpy_empty]):
         script_log(f"Warning: Missing RPY empties for {side} pants")
