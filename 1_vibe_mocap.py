@@ -12,12 +12,71 @@ from pathlib import Path
 
 # Add current directory to path to import utils
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# --- Import Project Utilities ---
+# Add the project root (HMP_SW) to the system path so we can import utils.py
 try:
-    from utils import script_log, get_current_show_name, get_current_scene_name, get_scene_paths, load_global_config
+    current_script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Normalize path for better compatibility (e.g., C:\...)
+    path_to_check = os.path.normpath(current_script_dir)
+    project_root = None
+
+    # Robustly traverse upwards until 'utils.py' is found
+    while True:
+        # Check if 'utils.py' exists in the current directory being checked
+        if os.path.exists(os.path.join(path_to_check, "utils.py")):
+            project_root = path_to_check
+            break
+
+        parent_path = os.path.dirname(path_to_check)
+
+        # If we reached the filesystem root (path doesn't change), stop
+        if parent_path == path_to_check:
+            raise FileNotFoundError("Project root (containing 'utils.py') not found in parent directories.")
+
+        path_to_check = parent_path
+
+    # Add the found project root to the system path
+    if project_root and project_root not in sys.path:
+        sys.path.append(project_root)
+
+    # Now import the utilities file from the dynamically found project root
+    # Note: If this still fails, you must verify the contents of the utils.py file itself.
+    from utils import (
+        script_log,
+        load_global_config,
+        get_project_root,
+        get_scene_paths,
+        get_current_show_name,
+        get_current_scene_name,
+        set_current_scene_name,
+        load_tsv_list,
+        get_processing_step_paths,
+        load_landmark_config
+    )
+
 except ImportError as e:
-    print(f"Error importing utils: {e}")
-    print("Please ensure utils.py is in the same directory or Python path")
+    # This specifically catches the import failure
+    print("--------------------------------------------------------------------------------------------------")
+    print(f"FATAL ERROR: Could not import HMP_SW/utils.py.")
+    print(f"Error: {e}")
+    # Print effective sys.path to aid debugging shadowing issues
+    print("\nCURRENT EFFECTIVE SYS.PATH (Check this list for other 'utils' module locations):")
+    for i, p in enumerate(sys.path):
+        print(f"  {i:02d}: {p}")
+    print(
+        "\nACTION REQUIRED: Please confirm that 'C:\\Users\\ken\\Documents\\Ken\\Fiction\\HMP_SW\\utils.py' exists and defines the function 'script_log'.")
+    print("--------------------------------------------------------------------------------------------------")
     sys.exit(1)
+except FileNotFoundError as e:
+    # This catches the robust path search failure
+    print(f"FATAL ERROR: {e}")
+    sys.exit(1)
+except Exception as e:
+    print(f"FATAL ERROR during utility setup: {e}")
+    sys.exit(1)
+
+
 
 
 def setup_vibe_environment():
