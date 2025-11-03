@@ -381,7 +381,7 @@ def apply_material_from_config(obj, config_key, material_name=None, fallback_col
     """
     # Get material configuration
     garment_config = garment_configs.get(config_key, {})
-    material_config = garment_config.get("material", {})
+    material_config = garment_configs.get("material", {})
 
     # Use provided name or generate from config key
     if material_name is None:
@@ -451,7 +451,7 @@ def apply_simple_material(obj, config_key, material_name=None, fallback_color=(0
     """
     # Get material configuration
     garment_config = garment_configs.get(config_key, {})
-    material_config = garment_config.get("material", {})
+    material_config = garment_configs.get("material", {})
 
     # Use provided name or generate from config key
     if material_name is None:
@@ -3295,7 +3295,7 @@ def create_pants(armature_obj, figure_name, side="left"):
     side_upper = side.upper()
     hip_control_name = f"CTRL_{side_upper}_HIP"
     knee_control_name = f"CTRL_{side_upper}_KNEE"
-    heel_control_name = f"CTRL_{side_upper}_HEEL"  # Using HEEL instead of ankle
+    heel_control_name = f"CTRL_{side_upper}_HEEL"
 
     # Get joint control systems using correct names
     hip_control = joint_control_systems.get(hip_control_name, {})
@@ -3303,51 +3303,98 @@ def create_pants(armature_obj, figure_name, side="left"):
     heel_control = joint_control_systems.get(heel_control_name, {})
 
     if not all([hip_control, knee_control, heel_control]):
-        script_log(
-            f"Warning: Missing joint control systems for {side} pants - looking for {hip_control_name}, {knee_control_name}, {heel_control_name}")
+        script_log(f"Warning: Missing joint control systems for {side} pants")
         return None
 
-    hip_rpy_empty = hip_control.get(f"VB_{hip_control_name}")
-    knee_rpy_empty = knee_control.get(f"VB_{knee_control_name}")
-    heel_rpy_empty = heel_control.get(f"VB_{heel_control_name}")
+    # Use VB empties (these are the actual empties that follow control points)
+    hip_vb_empty = hip_control.get('rpy_empty')  # Use RPY empty for constraints
+    knee_vb_empty = knee_control.get('rpy_empty')
+    heel_vb_empty = heel_control.get('rpy_empty')
 
-    if not all([hip_rpy_empty, knee_rpy_empty, heel_rpy_empty]):
+    if not all([hip_vb_empty, knee_vb_empty, heel_vb_empty]):
         script_log(f"Warning: Missing RPY empties for {side} pants")
         return None
 
+    # =========================================================================
+    # ADD Z-AXIS POINTING CONSTRAINTS TO RPY EMPTIES
+    # =========================================================================
+    script_log(f"DEBUG: Setting up Z-axis pointing constraints for {side} leg...")
+
+    # HIP RPY empty: Z-axis points to elbow
+    elbow_control_point = f"CTRL_{side_upper}_ELBOW"
+    elbow_target = bpy.data.objects.get(elbow_control_point)
+    if hip_vb_empty and elbow_target:
+        # Clear existing constraints first
+        for constraint in list(hip_vb_empty.constraints):
+            hip_vb_empty.constraints.remove(constraint)
+
+        # Add Damped Track constraint to point Z-axis toward elbow
+        track_constraint = hip_vb_empty.constraints.new('DAMPED_TRACK')
+        track_constraint.name = f"Track_To_Elbow"
+        track_constraint.target = elbow_target
+        track_constraint.track_axis = 'TRACK_Z'  # Z-axis points to target
+        script_log(f"✓ {hip_vb_empty.name} Z-axis tracking {elbow_control_point}")
+
+    # KNEE RPY empty: Z-axis points to wrist
+    wrist_control_point = f"CTRL_{side_upper}_WRIST"
+    wrist_target = bpy.data.objects.get(wrist_control_point)
+    if knee_vb_empty and wrist_target:
+        # Clear existing constraints first
+        for constraint in list(knee_vb_empty.constraints):
+            knee_vb_empty.constraints.remove(constraint)
+
+        # Add Damped Track constraint to point Z-axis toward wrist
+        track_constraint = knee_vb_empty.constraints.new('DAMPED_TRACK')
+        track_constraint.name = f"Track_To_Wrist"
+        track_constraint.target = wrist_target
+        track_constraint.track_axis = 'TRACK_Z'  # Z-axis points to target
+        script_log(f"✓ {knee_vb_empty.name} Z-axis tracking {wrist_control_point}")
+
+    # WRIST RPY empty: Z-axis points to index finger
+    index_control_point = f"CTRL_{side_upper}_INDEX"
+    index_target = bpy.data.objects.get(index_control_point)
+    if wrist_target and index_target:  # Note: using wrist_target from above
+        wrist_rpy_empty = joint_control_systems.get(wrist_control_point, {}).get('rpy_empty')
+        if wrist_rpy_empty:
+            # Clear existing constraints first
+            for constraint in list(wrist_rpy_empty.constraints):
+                wrist_rpy_empty.constraints.remove(constraint)
+
+            # Add Damped Track constraint to point Z-axis toward index finger
+            track_constraint = wrist_rpy_empty.constraints.new('DAMPED_TRACK')
+            track_constraint.name = f"Track_To_Index"
+            track_constraint.target = index_target
+            track_constraint.track_axis = 'TRACK_Z'  # Z-axis points to target
+            script_log(f"✓ {wrist_rpy_empty.name} Z-axis tracking {index_control_point}")
+    else:
+        script_log(f"⚠ Index control point {index_control_point} not found, wrist rotation will be neutral")
+
+    # Continue with existing pants creation code...
+    # [Rest of the existing create_pants function remains the same]
+
     # Get correct bone names
     if side == "left":
-        hip_bone_name = "DEF_LeftHip"
         thigh_bone_name = "DEF_LeftThigh"
         shin_bone_name = "DEF_LeftShin"
     else:
-        hip_bone_name = "DEF_RightHip"
         thigh_bone_name = "DEF_RightThigh"
         shin_bone_name = "DEF_RightShin"
-
-    # Get bone objects using correct names
-    thigh_bone = armature_obj.pose.bones.get(thigh_bone_name)
-    shin_bone = armature_obj.pose.bones.get(shin_bone_name)
-
-    if not thigh_bone or not shin_bone:
-        script_log(f"Warning: Missing bones for {side} pants - looking for {thigh_bone_name}, {shin_bone_name}")
-        return None
 
     # Store created objects
     pants_objects = []
 
-    # Create spheres at joints (parented to RPY empties)
+    # Create spheres at joints (parented to VB empties at their exact locations)
     script_log(f"Creating hip sphere for {side} pants...")
     hip_sphere = create_sphere(
         name=f"{figure_name}_{side}_pants_hip_sphere",
         diameter=diameter_hip,
         segments=segments,
-        location=hip_rpy_empty.location
+        location=hip_vb_empty.location  # Use RPY empty's actual location
     )
-    hip_sphere.parent = hip_rpy_empty
+    hip_sphere.parent = hip_vb_empty  # Parent to RPY empty for rotation
     apply_material_from_config(hip_sphere, f"{side}_pants")
     pants_objects.append(hip_sphere)
-    script_log(f"Created hip sphere: {hip_sphere.name}")
+    script_log(f"Created hip sphere at {hip_vb_empty.location}")
 
     # Knee sphere
     script_log(f"Creating knee sphere for {side} pants...")
@@ -3355,35 +3402,35 @@ def create_pants(armature_obj, figure_name, side="left"):
         name=f"{figure_name}_{side}_pants_knee_sphere",
         diameter=diameter_knee,
         segments=segments,
-        location=knee_rpy_empty.location
+        location=knee_vb_empty.location  # Use RPY empty's actual location
     )
-    knee_sphere.parent = knee_rpy_empty
+    knee_sphere.parent = knee_vb_empty  # Parent to RPY empty for rotation
     apply_material_from_config(knee_sphere, f"{side}_pants")
     pants_objects.append(knee_sphere)
-    script_log(f"Created knee sphere: {knee_sphere.name}")
+    script_log(f"Created knee sphere at {knee_vb_empty.location}")
 
-    # Ankle/Heel sphere (using heel control point)
+    # Ankle/Heel sphere
     script_log(f"Creating ankle sphere for {side} pants...")
     ankle_sphere = create_sphere(
         name=f"{figure_name}_{side}_pants_ankle_sphere",
         diameter=diameter_ankle,
         segments=segments,
-        location=heel_rpy_empty.location
+        location=heel_vb_empty.location  # Use RPY empty's actual location
     )
-    ankle_sphere.parent = heel_rpy_empty
+    ankle_sphere.parent = heel_vb_empty  # Parent to RPY empty for rotation
     apply_material_from_config(ankle_sphere, f"{side}_pants")
     pants_objects.append(ankle_sphere)
-    script_log(f"Created ankle sphere: {ankle_sphere.name}")
+    script_log(f"Created ankle sphere at {heel_vb_empty.location}")
 
-    # Create tapered cylinders (parented to bones)
+    # Create tapered cylinders between the actual joint positions
     script_log(f"Creating thigh cylinder for {side} pants...")
     thigh_cylinder = create_tapered_cylinder(
         name=f"{figure_name}_{side}_pants_thigh_cylinder",
         start_diameter=diameter_hip,
         end_diameter=diameter_knee,
         segments=segments,
-        start_location=hip_rpy_empty.location,
-        end_location=knee_rpy_empty.location
+        start_location=hip_vb_empty.location,  # Use actual hip position
+        end_location=knee_vb_empty.location  # Use actual knee position
     )
     # Parent to armature with bone constraint
     thigh_cylinder.parent = armature_obj
@@ -3391,7 +3438,7 @@ def create_pants(armature_obj, figure_name, side="left"):
     thigh_cylinder.parent_bone = thigh_bone_name
     apply_material_from_config(thigh_cylinder, f"{side}_pants")
     pants_objects.append(thigh_cylinder)
-    script_log(f"Created thigh cylinder: {thigh_cylinder.name}")
+    script_log(f"Created thigh cylinder from {hip_vb_empty.location} to {knee_vb_empty.location}")
 
     script_log(f"Creating shin cylinder for {side} pants...")
     shin_cylinder = create_tapered_cylinder(
@@ -3399,8 +3446,8 @@ def create_pants(armature_obj, figure_name, side="left"):
         start_diameter=diameter_knee,
         end_diameter=diameter_ankle,
         segments=segments,
-        start_location=knee_rpy_empty.location,
-        end_location=heel_rpy_empty.location  # Using heel location for ankle
+        start_location=knee_vb_empty.location,  # Use actual knee position
+        end_location=heel_vb_empty.location  # Use actual heel position
     )
     # Parent to armature with bone constraint
     shin_cylinder.parent = armature_obj
@@ -3408,9 +3455,10 @@ def create_pants(armature_obj, figure_name, side="left"):
     shin_cylinder.parent_bone = shin_bone_name
     apply_material_from_config(shin_cylinder, f"{side}_pants")
     pants_objects.append(shin_cylinder)
-    script_log(f"Created shin cylinder: {shin_cylinder.name}")
+    script_log(f"Created shin cylinder from {knee_vb_empty.location} to {heel_vb_empty.location}")
 
     script_log(f"Successfully created {side} pants with {len(pants_objects)} components")
+    script_log(f"✓ Z-axis constraints: Hip→Elbow, Knee→Wrist, Wrist→Index")
 
     # Return the main pants object (hip sphere) for compatibility
     return pants_objects[0] if pants_objects else None
