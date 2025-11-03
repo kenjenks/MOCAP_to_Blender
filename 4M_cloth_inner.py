@@ -3431,13 +3431,15 @@ def create_pants(armature_obj, figure_name, side="left"):
         start_diameter=diameter_hip,
         end_diameter=diameter_knee,
         segments=segments,
-        start_location=hip_vb_empty.location,  # Use actual hip position
-        end_location=knee_vb_empty.location  # Use actual knee position
+        start_location=hip_vb_empty.location,
+        end_location=knee_vb_empty.location
     )
-    setup_pants_cylinder_vertex_groups(thigh_cylinder, thigh_bone_name, armature_obj)
+    # Thigh cylinder spans from hip to knee bones
+    thigh_bone = "DEF_LeftThigh" if side == "left" else "DEF_RightThigh"
+    upper_leg_bone = "DEF_LeftUpperLeg" if side == "left" else "DEF_RightUpperLeg"
+    setup_pants_cylinder_vertex_groups(thigh_cylinder, thigh_bone, upper_leg_bone, armature_obj)
     apply_material_from_config(thigh_cylinder, f"{side}_pants")
     pants_objects.append(thigh_cylinder)
-    script_log(f"Created thigh cylinder from {hip_vb_empty.location} to {knee_vb_empty.location}")
 
     script_log(f"Creating shin cylinder for {side} pants...")
     shin_cylinder = create_tapered_cylinder(
@@ -3445,13 +3447,15 @@ def create_pants(armature_obj, figure_name, side="left"):
         start_diameter=diameter_knee,
         end_diameter=diameter_ankle,
         segments=segments,
-        start_location=knee_vb_empty.location,  # Use actual knee position
-        end_location=heel_vb_empty.location  # Use actual heel position
+        start_location=knee_vb_empty.location,
+        end_location=heel_vb_empty.location
     )
-    setup_pants_cylinder_vertex_groups(shin_cylinder, shin_bone_name, armature_obj)
+    # Shin cylinder spans from knee to ankle bones
+    shin_bone = "DEF_LeftShin" if side == "left" else "DEF_RightShin"
+    ankle_bone = "DEF_LeftAnkle" if side == "left" else "DEF_RightAnkle"
+    setup_pants_cylinder_vertex_groups(shin_cylinder, shin_bone, ankle_bone, armature_obj)
     apply_material_from_config(shin_cylinder, f"{side}_pants")
     pants_objects.append(shin_cylinder)
-    script_log(f"Created shin cylinder from {knee_vb_empty.location} to {heel_vb_empty.location}")
 
     script_log(f"Successfully created {side} pants with {len(pants_objects)} components")
     script_log(f"✓ Z-axis constraints: Hip→Elbow, Knee→Wrist, Wrist→Index")
@@ -3460,6 +3464,7 @@ def create_pants(armature_obj, figure_name, side="left"):
     # Return the main pants object (hip sphere) for compatibility
     return pants_objects[0] if pants_objects else None
 
+##########################################################################################
 
 def setup_pants_component_vertex_groups(obj, control_point_name, armature_obj):
     """Setup vertex groups for pants spheres to follow control points"""
@@ -3472,37 +3477,23 @@ def setup_pants_component_vertex_groups(obj, control_point_name, armature_obj):
         if mod.type == 'ARMATURE':
             obj.modifiers.remove(mod)
 
-    # Create vertex group for the control point
-    control_group = obj.vertex_groups.new(name=control_point_name)
-
-    # Assign full weight to all vertices
-    for i in range(len(obj.data.vertices)):
-        control_group.add([i], 1.0, 'REPLACE')
-
-    # Add armature modifier
-    armature_mod = obj.modifiers.new(name="Armature", type='ARMATURE')
-    armature_mod.object = armature_obj
-    armature_mod.use_vertex_groups = True
-
-    script_log(f"✓ Setup vertex groups for {obj.name} to follow {control_point_name}")
-
-##########################################################################################
-
-def setup_pants_cylinder_vertex_groups(obj, bone_name, armature_obj):
-    """Setup vertex groups for pants cylinders to follow bones"""
-    # Clear any existing vertex groups
-    for vg in list(obj.vertex_groups):
-        obj.vertex_groups.remove(vg)
-
-    # Remove any existing armature modifiers
-    for mod in list(obj.modifiers):
-        if mod.type == 'ARMATURE':
-            obj.modifiers.remove(mod)
+    # For spheres, we need to figure out which bone they should follow
+    # Based on control point name, determine the appropriate bone
+    bone_name = None
+    if "HIP" in control_point_name:
+        bone_name = "DEF_LeftHip" if "LEFT" in control_point_name else "DEF_RightHip"
+    elif "KNEE" in control_point_name:
+        bone_name = "DEF_LeftKnee" if "LEFT" in control_point_name else "DEF_RightKnee"
+    elif "HEEL" in control_point_name:
+        bone_name = "DEF_LeftAnkle" if "LEFT" in control_point_name else "DEF_RightAnkle"
+    else:
+        # Fallback: use thigh bone
+        bone_name = "DEF_LeftThigh" if "LEFT" in control_point_name else "DEF_RightThigh"
 
     # Create vertex group for the bone
     bone_group = obj.vertex_groups.new(name=bone_name)
 
-    # Assign full weight to all vertices
+    # Assign full weight to all vertices for spheres
     for i in range(len(obj.data.vertices)):
         bone_group.add([i], 1.0, 'REPLACE')
 
@@ -3512,6 +3503,48 @@ def setup_pants_cylinder_vertex_groups(obj, bone_name, armature_obj):
     armature_mod.use_vertex_groups = True
 
     script_log(f"✓ Setup vertex groups for {obj.name} to follow {bone_name}")
+
+##########################################################################################
+
+def setup_pants_cylinder_vertex_groups(obj, start_bone_name, end_bone_name, armature_obj):
+    """Setup vertex groups for pants cylinders to span between bones"""
+    # Clear any existing vertex groups
+    for vg in list(obj.vertex_groups):
+        obj.vertex_groups.remove(vg)
+
+    # Remove any existing armature modifiers
+    for mod in list(obj.modifiers):
+        if mod.type == 'ARMATURE':
+            obj.modifiers.remove(mod)
+
+    # Create vertex groups for both bones
+    start_bone_group = obj.vertex_groups.new(name=start_bone_name)
+    end_bone_group = obj.vertex_groups.new(name=end_bone_name)
+
+    # Get the cylinder's local Z bounds to determine vertex positions
+    z_coords = [obj.matrix_world @ v.co for v in obj.data.vertices]
+    min_z = min(v.z for v in z_coords)
+    max_z = max(v.z for v in z_coords)
+    total_length = max_z - min_z
+
+    # Weight vertices based on their Z position
+    for i, vertex in enumerate(obj.data.vertices):
+        vert_world = obj.matrix_world @ vertex.co
+        z_normalized = (vert_world.z - min_z) / total_length  # 0 = start, 1 = end
+
+        # Start bone gets more weight at the beginning, end bone at the end
+        start_weight = 1.0 - z_normalized
+        end_weight = z_normalized
+
+        start_bone_group.add([i], start_weight, 'REPLACE')
+        end_bone_group.add([i], end_weight, 'REPLACE')
+
+    # Add armature modifier
+    armature_mod = obj.modifiers.new(name="Armature", type='ARMATURE')
+    armature_mod.object = armature_obj
+    armature_mod.use_vertex_groups = True
+
+    script_log(f"✓ Setup vertex groups for {obj.name} to span {start_bone_name}→{end_bone_name}")
 
 ##########################################################################################
 
