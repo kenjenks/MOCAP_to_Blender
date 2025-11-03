@@ -5397,7 +5397,7 @@ def add_dynamic_weighting_to_garment(garment_obj, control_point_names, bone_name
     script_log(f"  - Bone groups: {bone_names}")
 
 
-def make_vertex_all_bundles():
+def make_vertex_all_bundles(armature_obj):
     """Create vertex bundle systems with two-empties architecture"""
     global joint_control_systems
 
