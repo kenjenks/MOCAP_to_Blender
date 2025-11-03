@@ -3281,7 +3281,7 @@ def create_boot(armature_obj, figure_name, garment_config, global_cloth_settings
 
 ##########################################################################################
 
-def create_pants(side, length_type="full"):
+def create_pants(armature_obj, figure_name, side, length_type="full"):
     """Create pants with vertex groups assigned to VB empties for direct control"""
     print(f"Creating continuous {side} pants with coordinated vertex bundles...")
 
