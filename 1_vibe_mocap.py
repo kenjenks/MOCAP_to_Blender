@@ -104,7 +104,7 @@ def setup_vibe_environment():
         return False
 
 
-def run_vibe_inference(video_path, output_dir, device='cuda' if torch.cuda.is_available() else 'cpu'):
+def run_vibe_inference(video_path, output_dir, device='cpu'):
     """
     Run VIBE inference on video file
     """
