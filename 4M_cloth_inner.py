@@ -3431,13 +3431,13 @@ def create_pants(armature_obj, figure_name, side="left"):
         start_diameter=diameter_hip,
         end_diameter=diameter_knee,
         segments=segments,
-        start_location=hip_vb_empty.location,
-        end_location=knee_vb_empty.location
+        start_location=hip_vb_empty.location,  # TOP at hips
+        end_location=knee_vb_empty.location  # BOTTOM at knees
     )
-    # Thigh cylinder spans from hip to knee bones
+    # Thigh cylinder spans from hip bone to upper leg bone
+    hip_bone = "DEF_LeftHip" if side == "left" else "DEF_RightHip"
     thigh_bone = "DEF_LeftThigh" if side == "left" else "DEF_RightThigh"
-    upper_leg_bone = "DEF_LeftUpperLeg" if side == "left" else "DEF_RightUpperLeg"
-    setup_pants_cylinder_vertex_groups(thigh_cylinder, thigh_bone, upper_leg_bone, armature_obj)
+    setup_pants_cylinder_vertex_groups(thigh_cylinder, hip_bone, thigh_bone, armature_obj)
     apply_material_from_config(thigh_cylinder, f"{side}_pants")
     pants_objects.append(thigh_cylinder)
 
@@ -3447,13 +3447,13 @@ def create_pants(armature_obj, figure_name, side="left"):
         start_diameter=diameter_knee,
         end_diameter=diameter_ankle,
         segments=segments,
-        start_location=knee_vb_empty.location,
-        end_location=heel_vb_empty.location
+        start_location=knee_vb_empty.location,  # TOP at knees
+        end_location=heel_vb_empty.location  # BOTTOM at ankles
     )
-    # Shin cylinder spans from knee to ankle bones
-    shin_bone = "DEF_LeftShin" if side == "left" else "DEF_RightShin"
+    # Shin cylinder spans from knee bone to ankle bone
+    knee_bone = "DEF_LeftKnee" if side == "left" else "DEF_RightKnee"
     ankle_bone = "DEF_LeftAnkle" if side == "left" else "DEF_RightAnkle"
-    setup_pants_cylinder_vertex_groups(shin_cylinder, shin_bone, ankle_bone, armature_obj)
+    setup_pants_cylinder_vertex_groups(shin_cylinder, knee_bone, ankle_bone, armature_obj)
     apply_material_from_config(shin_cylinder, f"{side}_pants")
     pants_objects.append(shin_cylinder)
 
@@ -3467,7 +3467,7 @@ def create_pants(armature_obj, figure_name, side="left"):
 ##########################################################################################
 
 def setup_pants_component_vertex_groups(obj, control_point_name, armature_obj):
-    """Setup vertex groups for pants spheres to follow control points"""
+    """Setup vertex groups for pants spheres with TWO-EMPTIES PARENTING + armature deformation"""
     # Clear any existing vertex groups
     for vg in list(obj.vertex_groups):
         obj.vertex_groups.remove(vg)
@@ -3477,37 +3477,31 @@ def setup_pants_component_vertex_groups(obj, control_point_name, armature_obj):
         if mod.type == 'ARMATURE':
             obj.modifiers.remove(mod)
 
-    # For spheres, we need to figure out which bone they should follow
-    # Based on control point name, determine the appropriate bone
-    bone_name = None
-    if "HIP" in control_point_name:
-        bone_name = "DEF_LeftHip" if "LEFT" in control_point_name else "DEF_RightHip"
-    elif "KNEE" in control_point_name:
-        bone_name = "DEF_LeftKnee" if "LEFT" in control_point_name else "DEF_RightKnee"
-    elif "HEEL" in control_point_name:
-        bone_name = "DEF_LeftAnkle" if "LEFT" in control_point_name else "DEF_RightAnkle"
-    else:
-        # Fallback: use thigh bone
-        bone_name = "DEF_LeftThigh" if "LEFT" in control_point_name else "DEF_RightThigh"
+    # IMPORTANT: Parent to the RPY empty for position + rotation
+    rpy_empty = joint_control_systems.get(control_point_name, {}).get('rpy_empty')
+    if rpy_empty:
+        obj.parent = rpy_empty
+        script_log(f"✓ {obj.name} parented to {rpy_empty.name} for position+rotation")
 
-    # Create vertex group for the bone
+    # Create vertex group for deformation (optional - for cloth simulation)
+    bone_name = "DEF_LeftThigh" if "LEFT" in control_point_name else "DEF_RightThigh"
     bone_group = obj.vertex_groups.new(name=bone_name)
 
-    # Assign full weight to all vertices for spheres
+    # Assign weights for deformation (light influence for cloth)
     for i in range(len(obj.data.vertices)):
-        bone_group.add([i], 1.0, 'REPLACE')
+        bone_group.add([i], 0.3, 'REPLACE')  # Light deformation weight
 
-    # Add armature modifier
+    # Add armature modifier for CLOTH DEFORMATION (not primary movement)
     armature_mod = obj.modifiers.new(name="Armature", type='ARMATURE')
     armature_mod.object = armature_obj
     armature_mod.use_vertex_groups = True
 
-    script_log(f"✓ Setup vertex groups for {obj.name} to follow {bone_name}")
+    script_log(f"✓ {obj.name} uses two-empties parenting + light armature deformation")
 
 ##########################################################################################
 
-def setup_pants_cylinder_vertex_groups(obj, start_bone_name, end_bone_name, armature_obj):
-    """Setup vertex groups for pants cylinders to span between bones"""
+def setup_pants_cylinder_vertex_groups(obj, start_control_point, end_control_point, armature_obj):
+    """Setup vertex groups for pants cylinders with TWO-EMPTIES PARENTING + armature deformation"""
     # Clear any existing vertex groups
     for vg in list(obj.vertex_groups):
         obj.vertex_groups.remove(vg)
@@ -3517,34 +3511,41 @@ def setup_pants_cylinder_vertex_groups(obj, start_bone_name, end_bone_name, arma
         if mod.type == 'ARMATURE':
             obj.modifiers.remove(mod)
 
-    # Create vertex groups for both bones
-    start_bone_group = obj.vertex_groups.new(name=start_bone_name)
-    end_bone_group = obj.vertex_groups.new(name=end_bone_name)
+    # IMPORTANT: Parent to the START control point's RPY empty
+    start_rpy_empty = joint_control_systems.get(start_control_point, {}).get('rpy_empty')
+    if start_rpy_empty:
+        obj.parent = start_rpy_empty
+        script_log(f"✓ {obj.name} parented to {start_rpy_empty.name} for position+rotation")
 
-    # Get the cylinder's local Z bounds to determine vertex positions
-    z_coords = [obj.matrix_world @ v.co for v in obj.data.vertices]
-    min_z = min(v.z for v in z_coords)
-    max_z = max(v.z for v in z_coords)
+    # Create vertex groups for deformation along the cylinder
+    start_bone = "DEF_LeftThigh" if "LEFT" in start_control_point else "DEF_RightThigh"
+    end_bone = "DEF_LeftShin" if "LEFT" in end_control_point else "DEF_RightShin"
+
+    start_bone_group = obj.vertex_groups.new(name=start_bone)
+    end_bone_group = obj.vertex_groups.new(name=end_bone)
+
+    # Weight vertices based on position for deformation
+    local_z_coords = [v.co.z for v in obj.data.vertices]
+    min_z = min(local_z_coords)
+    max_z = max(local_z_coords)
     total_length = max_z - min_z
 
-    # Weight vertices based on their Z position
     for i, vertex in enumerate(obj.data.vertices):
-        vert_world = obj.matrix_world @ vertex.co
-        z_normalized = (vert_world.z - min_z) / total_length  # 0 = start, 1 = end
+        z_local = vertex.co.z
+        z_normalized = (z_local - min_z) / total_length
 
-        # Start bone gets more weight at the beginning, end bone at the end
-        start_weight = 1.0 - z_normalized
-        end_weight = z_normalized
+        start_weight = (1.0 - z_normalized) * 0.3  # Light deformation
+        end_weight = z_normalized * 0.3  # Light deformation
 
         start_bone_group.add([i], start_weight, 'REPLACE')
         end_bone_group.add([i], end_weight, 'REPLACE')
 
-    # Add armature modifier
+    # Add armature modifier for CLOTH DEFORMATION (not primary movement)
     armature_mod = obj.modifiers.new(name="Armature", type='ARMATURE')
     armature_mod.object = armature_obj
     armature_mod.use_vertex_groups = True
 
-    script_log(f"✓ Setup vertex groups for {obj.name} to span {start_bone_name}→{end_bone_name}")
+    script_log(f"✓ {obj.name} uses two-empties parenting + gradient armature deformation")
 
 ##########################################################################################
 
@@ -3568,17 +3569,17 @@ def create_sphere(name, diameter, segments, location):
 ##########################################################################################
 
 def create_tapered_cylinder(name, start_diameter, end_diameter, segments, start_location, end_location):
-    """Create a tapered cylinder using Blender's Simple Deform taper."""
+    """Create a tapered cylinder that starts at start_location and ends at end_location"""
     # Calculate direction and length
     direction = end_location - start_location
     length = direction.length
 
-    # Create cylinder aligned with Z-axis at start location
+    # Create cylinder aligned with Z-axis at START location (not center)
     bpy.ops.mesh.primitive_cylinder_add(
         vertices=segments,
         radius=start_diameter / 2.0,  # Base radius at start
         depth=length,  # Total length
-        location=start_location
+        location=start_location  # Position at START, not center
     )
 
     cylinder = bpy.context.active_object
@@ -3606,6 +3607,10 @@ def create_tapered_cylinder(name, start_diameter, end_diameter, segments, start_
         rotation_quat = up_vector.rotation_difference(direction)
         cylinder.rotation_mode = 'QUATERNION'
         cylinder.rotation_quaternion = rotation_quat
+
+    # Move cylinder so start is at start_location and end is at end_location
+    # After rotation, the cylinder's local Z=0 is at start, Z=length is at end
+    # No need to adjust position since we created it at start_location
 
     return cylinder
 
