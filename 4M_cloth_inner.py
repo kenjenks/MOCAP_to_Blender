@@ -56,6 +56,7 @@ def main_execution():
 
         # 7. CREATE CLOTH GARMENTS (REPLACES KID FLESH)
         script_log("=== CREATING CLOTH GARMENTS ===")
+        set_global_joint_control_systems(joint_control_systems) # Set the global in _4M_dynamic_vertex_utils library
         register_driver_functions()
         load_garment_configs()  # Load configurations into global garment_configs
         populate_joint_control_systems()

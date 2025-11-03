@@ -3,14 +3,67 @@
 import bpy
 import bmesh
 from mathutils import Vector
-from utils import script_log
+import os
+import sys
 
+# --- Import Project Utilities ---
+# Add the project root (HMP_SW) to the system path so we can import utils.py
 try:
-    from .4M_cloth_inner import joint_control_systems
-except ImportError:
-    # Fallback if direct import doesn't work
-    joint_control_systems = {}
-    script_log("ERROR: Could not import joint_control_systems, using empty dict")
+    current_script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Normalize path for better compatibility (e.g., C:\...)
+    path_to_check = os.path.normpath(current_script_dir)
+    project_root = None
+
+    # Robustly traverse upwards until 'utils.py' is found
+    while True:
+        # Check if 'utils.py' exists in the current directory being checked
+        if os.path.exists(os.path.join(path_to_check, "utils.py")):
+            project_root = path_to_check
+            break
+
+        parent_path = os.path.dirname(path_to_check)
+
+        # If we reached the filesystem root (path doesn't change), stop
+        if parent_path == path_to_check:
+            raise FileNotFoundError("Project root (containing 'utils.py') not found in parent directories.")
+
+        path_to_check = parent_path
+
+    # Add the found project root to the system path
+    if project_root and project_root not in sys.path:
+        sys.path.append(project_root)
+
+    # Now import the utilities file from the dynamically found project root
+    from utils import (
+        script_log
+    )
+
+except ImportError as e:
+    # This specifically catches the import failure
+    print("--------------------------------------------------------------------------------------------------")
+    print(f"FATAL ERROR: Could not import HMP_SW/utils.py.")
+    print(f"Error: {e}")
+    # Print effective sys.path to aid debugging shadowing issues
+    print("\nCURRENT EFFECTIVE SYS.PATH (Check this list for other 'utils' module locations):")
+    for i, p in enumerate(sys.path):
+        print(f"  {i:02d}: {p}")
+    print(
+        "\nACTION REQUIRED: Please confirm that 'C:\\Users\\ken\\Documents\\Ken\\Fiction\\HMP_SW\\utils.py' exists and defines the function 'script_log'.")
+    print("--------------------------------------------------------------------------------------------------")
+    sys.exit(1)
+except FileNotFoundError as e:
+    # This catches the robust path search failure
+    print(f"FATAL ERROR: {e}")
+    sys.exit(1)
+except Exception as e:
+    print(f"FATAL ERROR during utility setup: {e}")
+    sys.exit(1)
+
+global _joint_control_systems
+
+def set_global_joint_control_systems(outer_joint_control_systems):
+    global _joint_control_systems
+    _joint_control_systems = outer_joint_control_systems
 
 def register_driver_functions():
     """Register custom functions for use in driver expressions"""
@@ -38,16 +91,18 @@ def register_driver_functions():
 def setup_dynamic_vertex_weights(garment_obj, control_point_name, vertex_indices, initial_weights):
     """Updated version with simplified driver expressions"""
 
+    global _joint_control_systems
+
     vertex_group = garment_obj.vertex_groups.get(control_point_name)
     if not vertex_group:
         script_log(f"Vertex group {control_point_name} not found in {garment_obj.name}")
         return
 
-    if control_point_name not in joint_control_systems:
+    if control_point_name not in _joint_control_systems:
         script_log(f"Control point {control_point_name} not in joint_control_systems")
         return
 
-    rpy_empty = joint_control_systems[control_point_name]['rpy_empty']
+    rpy_empty = _joint_control_systems[control_point_name]['rpy_empty']
     radius = get_bundle_radius(control_point_name)
 
     # Find the vertex group index
@@ -66,7 +121,7 @@ def setup_dynamic_vertex_weights(garment_obj, control_point_name, vertex_indices
             driver = garment_obj.data.vertices[vert_index].driver_add(f"groups[{vgroup_index}].weight")
 
             # SIMPLIFIED EXPRESSION:
-            driver.driver.expression = f"max(0, 1 - (distance / {radius})) * {max_weight}"
+            driver.driver.expression = f"max(0, 1 - (distance / {radius})) * {initial_weights[i]}"
 
             driver.driver.type = 'SCRIPTED'
 
