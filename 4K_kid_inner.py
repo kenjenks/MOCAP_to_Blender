@@ -82,7 +82,7 @@ def load_config_and_data():
         scene_config = get_scene_config(args.show, args.scene)
 
         # Get processing step paths
-        step_paths = get_processing_step_paths(args.show, args.scene, "kid_animation")
+        step_paths = get_processing_step_paths(args.show, args.scene, "export_to_blender")
 
         # Input JSON is from the apply_physics step
         processing_steps = scene_config.get("processing_steps", {})
