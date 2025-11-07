@@ -51,8 +51,8 @@ except ImportError as e:
 
 # --- Configuration and Paths (UPDATED for 4L_reskin) ---
 INNER_SCRIPT_NAME = "4L_reskin_inner.py"
-INPUT_STEP_NAME = "4K_kid"  # Output of 4K_kid.py is the input
-OUTPUT_STEP_NAME = "4L_reskin"  # Output of this script
+INPUT_STEP_NAME = "export_to_blender"  # Output of 4K_kid.py is the input
+OUTPUT_STEP_NAME = "export_to_blender"  # Output of this script
 CONFIG_FILE_NAME = "4L_reskin_config.json"  # Configuration file name
 LOG_FILE_NAME = 'general_log.txt'  # Defined the standard log file name
 
@@ -174,21 +174,25 @@ def main():
     script_log(f"RESKIN STARTING (Show: {show_name}, Scene: {scene_name})")
 
     # Get the required paths using the project utilities
-    input_paths = get_processing_step_paths(show_name, scene_name, INPUT_STEP_NAME)
-    output_paths = get_processing_step_paths(show_name, scene_name, OUTPUT_STEP_NAME)
+    input_paths = get_processing_step_paths(show_name, scene_name, OUTPUT_STEP_NAME)
+    output_paths = input_paths
 
     # Resolve actual directories
-    input_dir = normalize_path_result(input_paths, INPUT_STEP_NAME)
-    output_dir = normalize_path_result(output_paths, OUTPUT_STEP_NAME)
+    input_dir = normalize_path_result(input_paths, OUTPUT_STEP_NAME)
+    output_dir = input_dir
 
     # Construct the blend file paths based on naming convention
     # Input Blend File: The output of the 4K_kid step, used as input here.
-    input_blend_file_name = f"{scene_name}-{INPUT_STEP_NAME}.blend"
+    # Because this is a reskin, the input file is in the previous step's
+    # output_dir, which is the same as our output_dir.
+    input_blend_file_name = f"{scene_name}_kid.blend"
     input_blend_file = os.path.join(input_dir, input_blend_file_name)
 
     # Output Blend File: The file we will save the reskinned result to.
-    output_blend_file_name = f"{scene_name}-{OUTPUT_STEP_NAME}.blend"
+    output_blend_file_name = f"{scene_name}-reskin.blend"
     output_blend_file = os.path.join(output_dir, output_blend_file_name)
+    script_log(f"Input blend file: {input_blend_file}")
+    script_log(f"Output blend file: {output_blend_file}")
 
     inner_script_path = os.path.join(current_script_dir, INNER_SCRIPT_NAME)
 

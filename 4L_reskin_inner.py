@@ -1186,7 +1186,6 @@ def main_execution():
     else:
         script_log("=== 4L RESKIN INNER SCRIPT COMPLETED WITH ERRORS ===")
 
-
 try:
     # Run the main execution
     main_execution()
