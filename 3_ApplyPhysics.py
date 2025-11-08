@@ -941,7 +941,8 @@ class HeadStabilizer:
     ### METHOD ####################################################################################
 
     def correct_head_position(self, frame, head_analysis, body_plane):
-        """Apply corrections using nose_dot_product for proper head stabilization"""
+        """Apply corrections using head_dot_product for proper head stabilization"""
+        # Ensure analysis was performed and necessary landmarks exist
         if not head_analysis:
             script_log("DEBUG: No head_analysis - returning frame unchanged")
             return frame
@@ -953,26 +954,26 @@ class HeadStabilizer:
             script_log("DEBUG: Missing HEAD_TOP or NOSE - returning frame unchanged")
             return frame
 
-        # Get config values
+        # Get config values (NOSE_CORRECTION_RATIO is preserved for potential future use or context)
         NOSE_CORRECTION_RATIO = self.proportional.get('nose_correction_ratio', 0.7)
         MAX_NOSE_LENGTH = self.forward_controls.get('maximum_nose_length', 0.12)
         MIN_NOSE_LENGTH = self.forward_controls.get('minimum_nose_length', 0.07)
 
         body_normal = body_plane['body_normal']
-        nose_dot_product = head_analysis['nose_dot_product']
+        # Note: head_dot_product is assumed to be calculated in a preceding analysis step
+        head_dot_product = head_analysis['head_dot_product']
         nose_forward = head_analysis['nose_forward']
 
         # DEBUG: Log positions before correction
         script_log(f"DEBUG PRE-CORRECTION:")
         script_log(f"  HEAD_TOP: ({head_top['x']:.3f}, {head_top['y']:.3f}, {head_top['z']:.3f})")
-        script_log(f"  NOSE: ({nose['x']:.3f}, {nose['y']:.3f}, {nose_forward:.3f}")
-        script_log(f"  Head dot product: {head_analysis['head_dot_product']:.3f}")
-        script_log(f"  Nose dot product: {nose_dot_product:.3f}")
+        script_log(f"  NOSE: ({nose['x']:.3f}, {nose['y']:.3f}, {nose['z']:.3f})")
+        script_log(f"  Head dot product: {head_dot_product:.3f}")
         script_log(f"  Nose forward: {nose_forward:.3f}")
-        script_log(f"  Is behind body plane: {head_analysis['is_behind_body_plane']}")
         script_log(f"  Max nose length: {MAX_NOSE_LENGTH:.3f}")
 
-        # Separate correction for nose that's too long but in front of body plane
+        # 1. Correction for NOSE being too long (forward but stretched)
+        # This original logic is preserved: it only moves the NOSE backward.
         if nose_forward > MAX_NOSE_LENGTH and not head_analysis['is_behind_body_plane']:
             # Nose is too long but in front of plane - move it backward toward HEAD_TOP
             excess_length = nose_forward - MAX_NOSE_LENGTH
@@ -985,50 +986,35 @@ class HeadStabilizer:
 
             # DEBUG: Log this specific correction
             script_log(f"DEBUG NOSE-TOO-LONG CORRECTION:")
-            script_log(f"  Excess length: {excess_length:.3f}")
             script_log(f"  Correction vector: {correction_vector}")
-            script_log(f"  NOSE moved from ({nose['x'] - correction_vector[0]:.3f}, "
-                       f"{nose['y'] - correction_vector[1]:.3f}, {nose['z'] - correction_vector[2]:.3f})")
-            script_log(f"  NOSE moved to ({nose['x']:.3f}, {nose['y']:.3f}, {nose['z']:.3f})")
 
-        # Correction for when NOSE is behind the body plane
-        elif head_analysis['is_behind_body_plane']:
+        # 2. Rigid-Body Correction: Triggered ONLY if HEAD_TOP is behind the body plane.
+        # This implements your requested rigid-body logic.
+        elif head_dot_product < 0:
 
-            # --- MODIFIED LOGIC START ---
-
-            # 1. Calculate correction distance needed to move HEAD_TOP onto the plane (dot=0).
-            # This is the user's requested anchor point for the rigid-body move.
-            head_dot_product = head_analysis['head_dot_product']
+            # Calculate correction distance needed to move HEAD_TOP onto the plane (dot=0).
             correction_distance = -head_dot_product
-
-            # Ensure correction only moves the head forward (distance must be positive).
-            if correction_distance < 0.0:
-                script_log(
-                    "DEBUG: HEAD_TOP is on or in front of the plane (dot>=0). No forward rigid-body correction applied.")
-                return frame
-
-            # 2. Calculate the correction vector
             correction_vector = body_normal * correction_distance
 
-            # Apply full correction to HEAD_TOP (Moving it to the plane)
+            # Apply full correction to HEAD_TOP (Moving it exactly onto the plane)
             head_top['x'] += correction_vector[0]
             head_top['y'] += correction_vector[1]
             head_top['z'] += correction_vector[2]
 
-            # 3. Apply the same full correction to NOSE (rigid-body move).
-            # This satisfies the request that NOSE moves forward by the same amount as HEAD_TOP.
+            # Apply the same full correction to NOSE (rigid-body move).
+            # This ensures NOSE moves forward by the same amount as HEAD_TOP.
             nose['x'] += correction_vector[0]
             nose['y'] += correction_vector[1]
             nose['z'] += correction_vector[2]
 
             # DEBUG: Log positions after correction
-            script_log(f"DEBUG BEHIND-PLANE CORRECTION:")
+            script_log(f"DEBUG HEAD-ANCHORED CORRECTION:")
             script_log(f"  HEAD_TOP: ({head_top['x']:.3f}, {head_top['y']:.3f}, {head_top['z']:.3f})")
             script_log(f"  NOSE: ({nose['x']:.3f}, {nose['y']:.3f}, {nose['z']:.3f})")
             script_log(f"  Correction applied: {np.linalg.norm(correction_vector):.3f} units")
-            script_log(f"  Moved landmarks based on HEAD_TOP's deficit ({head_dot_product:.3f})")
 
         else:
+            # If HEAD_TOP is on or in front of the plane, and NOSE is not too long, no correction is needed.
             script_log("DEBUG: No head stabilization correction needed")
 
         return frame
