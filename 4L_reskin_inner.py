@@ -1117,19 +1117,32 @@ def create_component_based_reskin(config):
             script_log("⚠ No bridges were created")
     else:
         script_log("No bridge settings found - skipping bridge creation")
-
     # STEP 6: Setup final mesh
     script_log("--- 6. Setting up final mesh ---")
 
     # Add armature modifier
     rig_obj = bpy.data.objects.get(rig_name)
     if rig_obj:
+        # Remove any direct parenting that could cause double transformation
+        if final_mesh.parent is not None:
+            script_log(f"    - Removing direct parenting to '{final_mesh.parent.name}'")
+            final_mesh.parent = None
+
+        # Ensure no duplicate armature modifiers
+        existing_armature_mods = [mod for mod in final_mesh.modifiers if mod.type == 'ARMATURE']
+        for mod in existing_armature_mods:
+            script_log(f"    - Removing existing armature modifier: {mod.name}")
+            final_mesh.modifiers.remove(mod)
+
+        # Add clean armature modifier
         armature_mod = final_mesh.modifiers.new(name='Armature', type='ARMATURE')
         armature_mod.object = rig_obj
         armature_mod.use_vertex_groups = True
+
         script_log(f"    - Added Armature modifier ({rig_name}).")
         script_log(f"    - Armature object: {armature_mod.object}")
         script_log(f"    - Use vertex groups: {armature_mod.use_vertex_groups}")
+        script_log( "    - Using armature modifier only for deformation")
     else:
         script_log(f"WARNING: Rig '{rig_name}' not found.")
 
