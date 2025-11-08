@@ -89,6 +89,7 @@ with open(CONFIG_FILE_PATH) as config_file:
 # Load debug flags from config instead of hard-coding
 debug_flags = CONFIG.get('debug_flags', {})
 TURN_OFF_Z_UP_TRANSFORMATION = debug_flags.get('turn_off_z_up_transformation', False)
+TURN_OFF_HEAD_OVER_HEELS = debug_flags.get('turn_off_head_over_heels', False)
 TURN_OFF_FORWARD_TRANSFORMATION = debug_flags.get('turn_off_forward_transformation', True)
 TURN_OFF_SHOULDER_SHIFT = debug_flags.get('turn_off_shoulder_shift', True)
 TURN_OFF_HIP_SHIFT = debug_flags.get('turn_off_hip_shift', True)
@@ -98,6 +99,74 @@ TURN_OFF_DEPTH_ADJUSTMENT = debug_flags.get('turn_off_depth_adjustment', True)
 TURN_OFF_SHOULDER_STABILIZATION = debug_flags.get('turn_off_shoulder_stabilization', True)
 TURN_OFF_HEAD_STABILIZATION = debug_flags.get('turn_off_head_stabilization', True)
 TURN_OFF_FOOT_FLATTENING = debug_flags.get('turn_off_foot_flattening', True)
+
+
+def head_over_heels(all_frames_data):
+    """Detect if figure is inverted and flip Y coordinates if needed.
+
+    Compares the average Y value of HEAD_TOP landmark to the average Y value
+    of LEFT_FOOT_INDEX landmark to determine if the figure is inverted. If inverted,
+    changes the sign of the Y coordinates on all landmarks in all frames.
+
+    Args:
+        all_frames_data: Dictionary of frame data with landmark coordinates
+
+    Returns:
+        Dictionary of frame data with Y coordinates flipped if inverted
+    """
+    script_log("Checking for inverted figure (head over heels)...")
+
+    # Calculate average Y values for HEAD_TOP and LEFT_FOOT_INDEX across all frames
+    head_top_y_values = []
+    left_foot_y_values = []
+
+    for frame_num, frame_data in all_frames_data.items():
+        head_top = frame_data.get('HEAD_TOP')
+        left_foot = frame_data.get('LEFT_FOOT_INDEX')
+
+        if head_top and 'y' in head_top and head_top['y'] is not None:
+            head_top_y_values.append(head_top['y'])
+
+        if left_foot and 'y' in left_foot and left_foot['y'] is not None:
+            left_foot_y_values.append(left_foot['y'])
+
+    # If we don't have enough data, return original frames
+    if not head_top_y_values or not left_foot_y_values:
+        script_log("WARNING: Insufficient data to detect inversion - HEAD_TOP or LEFT_FOOT_INDEX landmarks missing")
+        return all_frames_data
+
+    # Calculate average Y positions
+    avg_head_top_y = sum(head_top_y_values) / len(head_top_y_values)
+    avg_left_foot_y = sum(left_foot_y_values) / len(left_foot_y_values)
+
+    script_log(f"Average HEAD_TOP Y: {avg_head_top_y:.4f}")
+    script_log(f"Average LEFT_FOOT_INDEX Y: {avg_left_foot_y:.4f}")
+
+    # Check if figure is inverted (head lower than feet in Y-axis)
+    # In MediaPipe coordinates: +Y is downward, so head should have lower Y values than feet normally
+    # If head has higher Y values than feet, the figure is inverted
+    is_inverted = avg_head_top_y > avg_left_foot_y
+
+    script_log(f"Figure inverted: {is_inverted}")
+
+    # If not inverted, return original data
+    if not is_inverted:
+        script_log("Figure is properly oriented - no inversion correction needed")
+        return all_frames_data
+
+    # If inverted, flip Y coordinates for all landmarks in all frames
+    script_log("Figure is inverted - flipping Y coordinates for all landmarks...")
+
+    for frame_num, frame_data in all_frames_data.items():
+        for landmark_name, coords in frame_data.items():
+            if (isinstance(coords, dict) and
+                    'y' in coords and
+                    coords['y'] is not None):
+                # Flip Y coordinate
+                coords['y'] = -coords['y']
+
+    script_log("Successfully flipped Y coordinates to correct inverted figure")
+    return all_frames_data
 
 class ShoulderStabilizer:
     """Detects and corrects upper/lower body scaling mismatches"""
@@ -1994,6 +2063,9 @@ def apply_physics(input_file, output_file, output_biometrics_file):
         if not TURN_OFF_Z_UP_TRANSFORMATION:
             transformed_frames_data = {}
 
+            if not TURN_OFF_HEAD_OVER_HEELS:
+                all_frames_data = head_over_heels(all_frames_data)
+
             shoulder_stabilizer = None
             if not TURN_OFF_SHOULDER_STABILIZATION:
                 shoulder_stabilizer = ShoulderStabilizer(landmark_config=landmark_config)
@@ -2040,8 +2112,8 @@ def apply_physics(input_file, output_file, output_biometrics_file):
                         minus_one = -1
                         transformed_frame_data[landmark_name] = {
                             'x': round(coords['x'], 4),
-                            'y': round(minus_one*coords['z'], 4),
-                            'z': round(coords['y'], 4),
+                            'y': round(minus_one * coords['z'], 4),
+                            'z': round(minus_one * coords['y'], 4),
                             'visibility': round(coords.get('visibility', 0.0), 4)
                         }
 
