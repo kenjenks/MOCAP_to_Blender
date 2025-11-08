@@ -95,20 +95,23 @@ Complete configuration structure in apply_physics_config.json:
 {
     "general": {
         "epsilon": 1e-6,
-        "log_file_path": "Log3.txt",
         "desired_up_vector": [0, 0, 1],
         "desired_forward_vector": [0, 1, 0]
     },
     "debug_flags": {
-        "turn_off_z_up_transformation": false,
-        "turn_off_forward_transformation": true,
-        "turn_off_shoulder_shift": true,
-        "turn_off_hip_shift": true,
-        "turn_off_biomechanical_constraints": true,
-        "turn_off_hip_heel_floor_shift": true,
-        "turn_off_depth_adjustment": false,
-        "turn_off_shoulder_stabilization": true,
-        "turn_off_head_stabilization": false
+        "enable_z_up_transformation": true,
+        "enable_head_over_heels": true,
+        "enable_forward_transformation": false,
+        "enable_shoulder_shift": false,
+        "enable_hip_shift": false,
+        "enable_biomechanical_constraints": false,
+        "enable_hip_heel_floor_shift": false,
+        "enable_depth_adjustment": true,
+        "enable_shoulder_stabilization": false,
+        "enable_head_stabilization": true,
+        "enable_foot_flattening": true,
+        "visualize_foot_contacts": false,
+        "log_foot_heights": false
     },
     "shoulder_stabilization": {
         "expected_shoulder_hip_ratio": 1.2,
@@ -120,16 +123,19 @@ Complete configuration structure in apply_physics_config.json:
     },
     "head_stabilization": {
         "enable_head_stabilization": true,
+        
         "distance_controls": {
             "min_head_shoulder_distance": 0.15,
             "target_head_shoulder_distance": 0.25,
             "distance_correction_strength": 0.3
         },
+        
         "height_controls": {
             "min_head_height": 0.12,
             "target_head_height": 0.18,
             "height_correction_strength": 0.3
         },
+        
         "forward_position_controls": {
             "min_head_forward_offset": 0.06,
             "target_head_forward_offset": 0.10,
@@ -137,8 +143,11 @@ Complete configuration structure in apply_physics_config.json:
             "target_nose_forward_offset": 0.15,
             "nose_forward_advantage": 0.02,
             "forward_correction_strength": 0.3,
+            "minimum_nose_length": 0.07,
+            "maximum_nose_length": 0.12,
             "nose_forward_priority": 0.8
         },
+        
         "body_plane_alignment": {
             "max_natural_plane_distance": 0.08,
             "plane_correction_strength": 0.2,
@@ -146,12 +155,14 @@ Complete configuration structure in apply_physics_config.json:
             "nodding_tolerance_factor": 1.5,
             "side_to_side_tolerance_factor": 0.8
         },
+        
         "proportional_corrections": {
             "nose_correction_ratio": 0.7,
             "other_landmarks_correction_ratio": 0.6,
             "ear_correction_ratio": 0.5,
             "eye_correction_ratio": 0.8
         },
+        
         "smoothing_controls": {
             "correction_smoothing_factor": 0.4,
             "history_window_size": 15,
@@ -193,6 +204,37 @@ Complete configuration structure in apply_physics_config.json:
         "head_y_translation_limit_percent": 2.0,
         "head_roll_sensitivity": 0.5,
         "head_nod_sensitivity": 5.0
+    },
+    "rotation": {
+        "default_rotation_matrix": [
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1]
+        ]
+    },
+    "foot_flattener": {
+        "enable_foot_flattening": true,
+        
+        "grounding_controls": {
+            "max_foot_lift_grounded": 0.02,
+            "max_foot_lift_jumping": 0.15,
+            "landing_transition_frames": 8,
+            "running_foot_clearance": 0.05
+        },
+        
+        "smoothing_controls": {
+            "foot_height_smoothing_factor": 0.3,
+            "min_frames_for_ground_contact": 3,
+            "transition_blend_speed": 0.2
+        },
+        
+        "biomechanical_constraints": {
+            "min_foot_length_to_shin_ratio": 0.6,
+            "max_ankle_flexion_degrees": 45.0,
+            "min_ankle_flexion_degrees": -20.0,
+            "max_knee_flexion_running": 60.0,
+            "leg_length_ratio_tolerance": 0.15
+        }
     }
 }
 ===
