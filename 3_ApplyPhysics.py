@@ -88,17 +88,17 @@ with open(CONFIG_FILE_PATH) as config_file:
 
 # Load debug flags from config instead of hard-coding
 debug_flags = CONFIG.get('debug_flags', {})
-TURN_OFF_Z_UP_TRANSFORMATION = debug_flags.get('turn_off_z_up_transformation', False)
-TURN_OFF_HEAD_OVER_HEELS = debug_flags.get('turn_off_head_over_heels', False)
-TURN_OFF_FORWARD_TRANSFORMATION = debug_flags.get('turn_off_forward_transformation', True)
-TURN_OFF_SHOULDER_SHIFT = debug_flags.get('turn_off_shoulder_shift', True)
-TURN_OFF_HIP_SHIFT = debug_flags.get('turn_off_hip_shift', True)
-TURN_OFF_BIOMECHANICAL_CONSTRAINTS = debug_flags.get('turn_off_biomechanical_constraints', True)
-TURN_OFF_HIP_HEEL_FLOOR_SHIFT = debug_flags.get('turn_off_hip_heel_floor_shift', True)
-TURN_OFF_DEPTH_ADJUSTMENT = debug_flags.get('turn_off_depth_adjustment', True)
-TURN_OFF_SHOULDER_STABILIZATION = debug_flags.get('turn_off_shoulder_stabilization', True)
-TURN_OFF_HEAD_STABILIZATION = debug_flags.get('turn_off_head_stabilization', True)
-TURN_OFF_FOOT_FLATTENING = debug_flags.get('turn_off_foot_flattening', True)
+ENABLE_Z_UP_TRANSFORMATION = debug_flags.get('enable_z_up_transformation', True)
+ENABLE_HEAD_OVER_HEELS = debug_flags.get('enable_head_over_heels', True)
+ENABLE_FORWARD_TRANSFORMATION = debug_flags.get('enable_forward_transformation', True)
+ENABLE_SHOULDER_SHIFT = debug_flags.get('enable_shoulder_shift', True)
+ENABLE_HIP_SHIFT = debug_flags.get('enable_hip_shift', True)
+ENABLE_BIOMECHANICAL_CONSTRAINTS = debug_flags.get('enable_biomechanical_constraints', True)
+ENABLE_HIP_HEEL_FLOOR_SHIFT = debug_flags.get('enable_hip_heel_floor_shift', True)
+ENABLE_DEPTH_ADJUSTMENT = debug_flags.get('enable_depth_adjustment', True)
+ENABLE_SHOULDER_STABILIZATION = debug_flags.get('enable_shoulder_stabilization', True)
+ENABLE_HEAD_STABILIZATION = debug_flags.get('enable_head_stabilization', True)
+ENABLE_FOOT_FLATTENING = debug_flags.get('enable_foot_flattening', True)
 
 
 def head_over_heels(all_frames_data):
@@ -2062,21 +2062,21 @@ def apply_physics(input_file, output_file, output_biometrics_file):
 
         script_log("Starting Z-up transformation...")
 
-        if not TURN_OFF_Z_UP_TRANSFORMATION:
+        if ENABLE_Z_UP_TRANSFORMATION:
             transformed_frames_data = {}
 
-            if not TURN_OFF_HEAD_OVER_HEELS:
+            if ENABLE_HEAD_OVER_HEELS:
                 all_frames_data = head_over_heels(all_frames_data)
 
             shoulder_stabilizer = None
-            if not TURN_OFF_SHOULDER_STABILIZATION:
+            if ENABLE_SHOULDER_STABILIZATION:
                 shoulder_stabilizer = ShoulderStabilizer(landmark_config=landmark_config)
                 script_log("Shoulder stabilization enabled")
             else:
                 script_log("Shoulder stabilization disabled")
 
             head_stabilizer = None
-            if not TURN_OFF_HEAD_STABILIZATION:
+            if ENABLE_HEAD_STABILIZATION:
                 head_stabilizer = HeadStabilizer(landmark_config=landmark_config)
                 script_log("Head stabilization enabled")
             else:
@@ -2084,7 +2084,7 @@ def apply_physics(input_file, output_file, output_biometrics_file):
 
             # SHARED MOTION DETECTOR - Create once for FootFlattener and HeightAdjuster
             shared_motion_detector = None
-            if not TURN_OFF_HIP_HEEL_FLOOR_SHIFT or not TURN_OFF_FOOT_FLATTENING:
+            if ENABLE_HIP_HEEL_FLOOR_SHIFT or ENABLE_FOOT_FLATTENING:
                 shared_motion_detector = MotionPhaseDetector(landmark_config=landmark_config)
                 script_log("Created shared motion detector for foot and height processing")
 
@@ -2151,7 +2151,7 @@ def apply_physics(input_file, output_file, output_biometrics_file):
 
             script_log("Applied coordinate transformation")
 
-            if not TURN_OFF_FORWARD_TRANSFORMATION:
+            if ENABLE_FORWARD_TRANSFORMATION:
                 script_log("Determining forward orientation...")
                 avg_foot_forward_vector = np.array([0.0, 0.0, 0.0])
                 count_foot_vectors = 0
@@ -2278,7 +2278,7 @@ def apply_physics(input_file, output_file, output_biometrics_file):
                             script_log(f"Frame {frame_num}: Wrist_Z={wrist_z}, Hip_Z={hip_z}, Shoulder_Z={shoulder_z}, "
                                        f"DistToHip={dist_to_hip}, DistToShoulder={dist_to_shoulder}")
             else:
-                script_log("Forward transformation skipped (turn_off_forward_transformation is True).")
+                script_log("Forward transformation skipped (ENABLE_forward_transformation is False).")
 
             script_log("Grounding feet at Z=0...")
 
@@ -2309,15 +2309,15 @@ def apply_physics(input_file, output_file, output_biometrics_file):
 
             # MOVED: Foot flattening is now at the END, after all other transformations
 
-            if not TURN_OFF_DEPTH_ADJUSTMENT:
+            if ENABLE_DEPTH_ADJUSTMENT:
                 script_log("Starting depth adjustment for exaggerated depth estimates...")
                 depth_adjuster = DepthAdjuster(landmark_config=landmark_config)
                 transformed_frames_data = depth_adjuster.process_frames(transformed_frames_data)
                 script_log("Completed depth adjustment")
             else:
-                script_log("Depth adjustment skipped (turn_off_depth_adjustment is True).")
+                script_log("Depth adjustment skipped (ENABLE_depth_adjustment is False).")
 
-            if head_stabilizer and not TURN_OFF_HEAD_STABILIZATION:
+            if head_stabilizer and ENABLE_HEAD_STABILIZATION:
                 script_log("Starting head stabilization...")
                 stabilized_frames_data = {}
                 for frame_num, frame_data in transformed_frames_data.items():
@@ -2327,7 +2327,7 @@ def apply_physics(input_file, output_file, output_biometrics_file):
                 script_log("Completed head stabilization")
 
             # HEIGHT ADJUSTMENT (with shared motion detector)
-            if not TURN_OFF_HIP_HEEL_FLOOR_SHIFT:
+            if ENABLE_HIP_HEEL_FLOOR_SHIFT:
                 script_log("Applying enhanced HIP_HEEL_FLOOR_SHIFT with state machine...")
                 height_adjuster = HeightAdjuster(
                     landmark_config=landmark_config,
@@ -2336,7 +2336,7 @@ def apply_physics(input_file, output_file, output_biometrics_file):
                 transformed_frames_data = height_adjuster.process_frames(transformed_frames_data)
                 script_log("Completed HIP_HEEL_FLOOR_SHIFT transformation")
             else:
-                script_log("HIP_HEEL_FLOOR_SHIFT skipped (turn_off_hip_heel_floor_shift is True).")
+                script_log("HIP_HEEL_FLOOR_SHIFT skipped (ENABLE_hip_heel_floor_shift is False).")
 
             script_log("Applying global scaling and centering...")
             min_z = float('inf')
@@ -2421,7 +2421,7 @@ def apply_physics(input_file, output_file, output_biometrics_file):
             script_log(f"Data scaled to a height of {desired_height}m and centered at (0,0).")
 
             # BIOMECHANICAL CONSTRAINTS - KEEP THIS IN ORIGINAL POSITION
-            if not TURN_OFF_BIOMECHANICAL_CONSTRAINTS:
+            if ENABLE_BIOMECHANICAL_CONSTRAINTS:
                 script_log("Applying biomechanical constraints...")
                 biometrics_frames = {}
                 for frame_num, frame_data in transformed_frames_data.items():
@@ -2548,10 +2548,10 @@ def apply_physics(input_file, output_file, output_biometrics_file):
                     json.dump(biometric_data, f, indent=4)
                 script_log(f"Successfully estimated biometrics and saved to '{output_biometrics_file}'.")
             else:
-                script_log("Forward biometric constraints skipped (turn_off_biomechanical_constraints is True).")
+                script_log("Forward biometric constraints skipped (ENABLE_biomechanical_constraints is False).")
 
             # FOOT FLATTENING (with shared motion detector) - MOVED TO THE VERY END
-            if not TURN_OFF_FOOT_FLATTENING:
+            if ENABLE_FOOT_FLATTENING:
                 script_log("Applying foot flattening corrections as FINAL step...")
                 foot_flattener = FootFlattener(
                     landmark_config=landmark_config,
@@ -2560,10 +2560,9 @@ def apply_physics(input_file, output_file, output_biometrics_file):
                 transformed_frames_data = foot_flattener.process_frames(transformed_frames_data)
                 script_log("Completed FINAL foot flattening")
             else:
-                script_log("Foot flattening skipped (turn_off_foot_flattening is True).")
-
+                script_log("Foot flattening skipped (ENABLE_foot_flattening is False).")
         else:
-            script_log("Z-up transformation skipped (turn_off_z_up_transformation is True).")
+            script_log("Z-up transformation skipped (ENABLE_z_up_transformation is True).")
             transformed_frames_data = all_frames_data
 
         if transformed_frames_data:
