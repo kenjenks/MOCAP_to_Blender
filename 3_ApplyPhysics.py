@@ -1,4 +1,4 @@
-# 3_ApplyPhysics.py (Version 3.4 - Added shoulder stabilization)
+# 3_ApplyPhysics.py (Version 3.5 - Fixed inconsistent Y transformation)
 
 import argparse
 import os
