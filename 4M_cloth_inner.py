@@ -51,6 +51,7 @@ def main_execution():
 
         # 6. SET UP CONSTRAINTS
         setup_direct_constraints(armature_obj, figure_name)
+        setup_hip_shoulder_constraints(armature_obj, figure_name)
         setup_two_segment_spine_constraints(armature_obj, figure_name)
         setup_root_bone_transform_constraints(armature_obj)
 
@@ -6302,6 +6303,69 @@ def save_blender_file():
     except Exception as e:
         script_log(f"Error saving Blender file: {e}")
 
+
+##########################################################################################
+
+def setup_hip_shoulder_constraints(armature_obj, figure_name="Main"):
+    """Set up constraints for hips and shoulders to follow their control points"""
+    script_log("=== SETTING UP HIP & SHOULDER CONSTRAINTS ===")
+
+    bpy.context.view_layer.objects.active = armature_obj
+    bpy.ops.object.mode_set(mode='POSE')
+
+    constraints_added = 0
+
+    # Hip constraints
+    hip_bones = {
+        "DEF_LeftHip": "CTRL_LEFT_HIP",
+        "DEF_RightHip": "CTRL_RIGHT_HIP"
+    }
+
+    for bone_name, control_point in hip_bones.items():
+        if bone_name in armature_obj.pose.bones:
+            hip_bone = armature_obj.pose.bones[bone_name]
+
+            # Clear any existing constraints
+            for constraint in list(hip_bone.constraints):
+                hip_bone.constraints.remove(constraint)
+
+            # Find control point object
+            target_obj = bpy.data.objects.get(control_point)
+            if target_obj:
+                # Use STRETCH_TO to make the hip bone point to its control point
+                stretch_to = hip_bone.constraints.new('STRETCH_TO')
+                stretch_to.target = target_obj
+                stretch_to.influence = 1.0
+                constraints_added += 1
+                script_log(f"{bone_name} STRETCH_TO -> {control_point}")
+
+    # Shoulder constraints
+    shoulder_bones = {
+        "DEF_LeftShoulder": "CTRL_LEFT_SHOULDER",
+        "DEF_RightShoulder": "CTRL_RIGHT_SHOULDER"
+    }
+
+    for bone_name, control_point in shoulder_bones.items():
+        if bone_name in armature_obj.pose.bones:
+            shoulder_bone = armature_obj.pose.bones[bone_name]
+
+            # Clear any existing constraints
+            for constraint in list(shoulder_bone.constraints):
+                shoulder_bone.constraints.remove(constraint)
+
+            # Find control point object
+            target_obj = bpy.data.objects.get(control_point)
+            if target_obj:
+                # Use STRETCH_TO to make the shoulder bone point to its control point
+                stretch_to = shoulder_bone.constraints.new('STRETCH_TO')
+                stretch_to.target = target_obj
+                stretch_to.influence = 1.0
+                constraints_added += 1
+                script_log(f"{bone_name} STRETCH_TO -> {control_point}")
+
+    bpy.ops.object.mode_set(mode='OBJECT')
+    script_log(f"Hip & shoulder constraints: {constraints_added} constraints added")
+    return constraints_added
 
 ##########################################################################################
 
