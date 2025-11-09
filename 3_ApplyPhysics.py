@@ -157,13 +157,14 @@ def head_over_heels(all_frames_data):
     # If inverted, flip Y coordinates for all landmarks in all frames
     script_log("Figure is inverted - flipping Y coordinates for all landmarks...")
 
+    minus_one = -1
     for frame_num, frame_data in all_frames_data.items():
         for landmark_name, coords in frame_data.items():
             if (isinstance(coords, dict) and
                     'y' in coords and
                     coords['y'] is not None):
                 # Flip Y coordinate
-                coords['y'] = -coords['y']
+                coords['y'] = minus_one * coords['y']
 
     script_log("Successfully flipped Y coordinates to correct inverted figure")
     return all_frames_data
@@ -2114,8 +2115,8 @@ def apply_physics(input_file, output_file, output_biometrics_file):
                         minus_one = -1
                         transformed_frame_data[landmark_name] = {
                             'x': round(coords['x'], 4),
-                            'y': round(minus_one * coords['z'], 4),
-                            'z': round(minus_one * coords['y'], 4),
+                            'y': round(coords['z'], 4),
+                            'z': minus_one * round(coords['y'], 4),
                             'visibility': round(coords.get('visibility', 0.0), 4)
                         }
 

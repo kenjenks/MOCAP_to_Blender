@@ -12,10 +12,10 @@
         "enable_hip_shift": false,
         "enable_biomechanical_constraints": false,
         "enable_hip_heel_floor_shift": false,
-        "enable_depth_adjustment": true,
+        "enable_depth_adjustment": false,
         "enable_shoulder_stabilization": false,
-        "enable_head_stabilization": true,
-        "enable_foot_flattening": true,
+        "enable_head_stabilization": false,
+        "enable_foot_flattening": false,
         "visualize_foot_contacts": false,
         "log_foot_heights": false
     },
@@ -50,7 +50,7 @@
             "nose_forward_advantage": 0.02,
             "forward_correction_strength": 0.3,
             "minimum_nose_length": 0.07,
-            "maximum_nose_length": 0.12,
+            "maximum_nose_length": 0.25,
             "nose_forward_priority": 0.8
         },
         
