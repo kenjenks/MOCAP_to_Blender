@@ -4768,7 +4768,7 @@ def create_sleeve(armature_obj, figure_name, garment_config, global_cloth_settin
     # Upper arm cylinder spans from shoulder bone to elbow bone
     shoulder_bone = "DEF_LeftShoulder" if side == "left" else "DEF_RightShoulder"
     upper_arm_bone = "DEF_LeftUpperArm" if side == "left" else "DEF_RightUpperArm"
-    setup_sleeve_cylinder_vertex_groups(upper_arm_cylinder, shoulder_vb_empty, shoulder_bone, upper_arm_bone, armature_obj)
+    setup_pants_cylinder_vertex_groups(upper_arm_cylinder, shoulder_vb_empty, shoulder_bone, upper_arm_bone, armature_obj)
     apply_material_from_config(upper_arm_cylinder, f"{side}_sleeve")
     sleeve_objects.append(upper_arm_cylinder)
 
@@ -4787,7 +4787,7 @@ def create_sleeve(armature_obj, figure_name, garment_config, global_cloth_settin
     # Forearm cylinder spans from elbow bone to wrist bone
     elbow_bone = "DEF_LeftElbow" if side == "left" else "DEF_RightElbow"
     wrist_bone = "DEF_LeftWrist" if side == "left" else "DEF_RightWrist"
-    setup_sleeve_cylinder_vertex_groups(forearm_cylinder, elbow_vb_empty, elbow_bone, wrist_bone, armature_obj)
+    setup_pants_cylinder_vertex_groups(forearm_cylinder, elbow_vb_empty, elbow_bone, wrist_bone, armature_obj)
     apply_material_from_config(forearm_cylinder, f"{side}_sleeve")
     sleeve_objects.append(forearm_cylinder)
 
