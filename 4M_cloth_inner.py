@@ -3576,43 +3576,40 @@ def create_tapered_cylinder(name, start_diameter, end_diameter, segments, start_
     direction = end_location - start_location
     length = direction.length
 
-    # Create cylinder aligned with Z-axis at START location (not center)
+    # Create cylinder aligned with Z-axis with TOP at start_location (not center)
+    # Position cylinder so local Z=0 is at top, Z=length is at bottom
+    cylinder_center = start_location + (direction / 2)  # Center between start and end
+
     bpy.ops.mesh.primitive_cylinder_add(
         vertices=segments,
-        radius=start_diameter / 2.0,  # Base radius at start
-        depth=length,  # Total length
-        location=start_location  # Position at START, not center
+        radius=start_diameter / 2.0,
+        depth=length,
+        location=cylinder_center  # Position at center between start and end
     )
 
     cylinder = bpy.context.active_object
     cylinder.name = name
 
-    # Calculate taper factor (1.0 = no taper, <1.0 = taper down, >1.0 = taper up)
-    taper_factor = end_diameter / start_diameter
+    # Rotate cylinder to point from start to end location
+    up_vector = Vector((0, 0, 1))
+    if direction.length > 0.001:
+        direction.normalize()
+        rotation_quat = up_vector.rotation_difference(direction)
+        cylinder.rotation_mode = 'QUATERNION'
+        cylinder.rotation_quaternion = rotation_quat
 
-    # Add taper modifier
+    # Apply taper
+    taper_factor = end_diameter / start_diameter
     taper_modifier = cylinder.modifiers.new(name="Taper", type='SIMPLE_DEFORM')
     taper_modifier.deform_method = 'TAPER'
-    taper_modifier.factor = taper_factor - 1.0  # 0 = no taper
-    taper_modifier.deform_axis = 'Z'  # Taper along the cylinder's length
+    taper_modifier.factor = taper_factor - 1.0
+    taper_modifier.deform_axis = 'Z'
     taper_modifier.lock_x = False
     taper_modifier.lock_y = False
 
     # Apply the modifier to make the taper permanent
     bpy.context.view_layer.objects.active = cylinder
     bpy.ops.object.modifier_apply(modifier="Taper")
-
-    # Rotate cylinder to point from start to end location
-    up_vector = Vector((0, 0, 1))
-    if direction.length > 0.001:  # Avoid division by zero
-        direction.normalize()
-        rotation_quat = up_vector.rotation_difference(direction)
-        cylinder.rotation_mode = 'QUATERNION'
-        cylinder.rotation_quaternion = rotation_quat
-
-    # Move cylinder so start is at start_location and end is at end_location
-    # After rotation, the cylinder's local Z=0 is at start, Z=length is at end
-    # No need to adjust position since we created it at start_location
 
     return cylinder
 
