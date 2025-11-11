@@ -4670,439 +4670,133 @@ def create_mitten(armature_obj, figure_name, garment_config, global_cloth_settin
 ##########################################################################################
 
 def create_sleeve(armature_obj, figure_name, garment_config, global_cloth_settings, side="left"):
-    """Create continuous sleeve with spherical pinning zone weighting using new vertex bundles system"""
-    script_log(f"Creating continuous {side} sleeve with spherical pinning zones...")
-
-    # Get arm bone positions
-    bpy.context.view_layer.objects.active = armature_obj
-    bpy.ops.object.mode_set(mode='POSE')
-
-    try:
-        if side == "left":
-            shoulder_bone_name = "DEF_LeftShoulder"
-            upper_arm_bone_name = "DEF_LeftUpperArm"
-            forearm_bone_name = "DEF_LeftForearm"
-
-            # Control points for new vertex bundles system
-            shoulder_control_point = "CTRL_LEFT_SHOULDER"
-            elbow_control_point = "CTRL_LEFT_ELBOW"
-            wrist_control_point = "CTRL_LEFT_WRIST"
-        else:
-            shoulder_bone_name = "DEF_RightShoulder"
-            upper_arm_bone_name = "DEF_RightUpperArm"
-            forearm_bone_name = "DEF_RightForearm"
-
-            # Control points for new vertex bundles system
-            shoulder_control_point = "CTRL_RIGHT_SHOULDER"
-            elbow_control_point = "CTRL_RIGHT_ELBOW"
-            wrist_control_point = "CTRL_RIGHT_WRIST"
-
-        shoulder_bone = armature_obj.pose.bones.get(shoulder_bone_name)
-        upper_arm_bone = armature_obj.pose.bones.get(upper_arm_bone_name)
-        forearm_bone = armature_obj.pose.bones.get(forearm_bone_name)
-
-        bpy.ops.object.mode_set(mode='OBJECT')
-
-        if not all([shoulder_bone, upper_arm_bone, forearm_bone]):
-            script_log(f"ERROR: Could not find arm bones for {side} sleeve")
-            return None
-
-        # =========================================================================
-        # STEP 1: SET UP BONE CONSTRAINTS FIRST
-        # =========================================================================
-        script_log(f"DEBUG: Setting up bone constraints for {side} sleeve movement...")
-
-        bpy.context.view_layer.objects.active = armature_obj
-        bpy.ops.object.mode_set(mode='POSE')
-
-        # CLEAR EXISTING CONSTRAINTS FIRST
-        for bone_name in [shoulder_bone_name, upper_arm_bone_name, forearm_bone_name]:
-            bone = armature_obj.pose.bones.get(bone_name)
-            if bone:
-                for constraint in list(bone.constraints):
-                    bone.constraints.remove(constraint)
-
-        # SET UP STRETCH_TO CONSTRAINTS TO CONTROL POINTS
-        constraints_added = 0
-
-        # SHOULDER BONE: Constrain to shoulder control point
-        shoulder_target = bpy.data.objects.get(shoulder_control_point)
-        if shoulder_bone and shoulder_target:
-            stretch = shoulder_bone.constraints.new('STRETCH_TO')
-            stretch.target = shoulder_target
-            stretch.influence = 1.0
-            constraints_added += 1
-            script_log(f"✓ {shoulder_bone_name} STRETCH_TO -> {shoulder_control_point}")
-
-        # UPPER ARM BONE: Constrain to elbow control point
-        elbow_target = bpy.data.objects.get(elbow_control_point)
-        if upper_arm_bone and elbow_target:
-            stretch = upper_arm_bone.constraints.new('STRETCH_TO')
-            stretch.target = elbow_target
-            stretch.influence = 1.0
-            constraints_added += 1
-            script_log(f"✓ {upper_arm_bone_name} STRETCH_TO -> {elbow_control_point}")
-
-        # FOREARM BONE: Constrain to wrist control point
-        wrist_target = bpy.data.objects.get(wrist_control_point)
-        if forearm_bone and wrist_target:
-            stretch = forearm_bone.constraints.new('STRETCH_TO')
-            stretch.target = wrist_target
-            stretch.influence = 1.0
-            constraints_added += 1
-            script_log(f"✓ {forearm_bone_name} STRETCH_TO -> {wrist_control_point}")
-
-        bpy.ops.object.mode_set(mode='OBJECT')
-        script_log(f"✓ Added {constraints_added} bone constraints for {side} sleeve")
-
-        # NOW GET UPDATED BONE POSITIONS AFTER CONSTRAINTS ARE APPLIED
-        bpy.context.view_layer.objects.active = armature_obj
-        bpy.ops.object.mode_set(mode='POSE')
-
-        shoulder_bone = armature_obj.pose.bones.get(shoulder_bone_name)
-        upper_arm_bone = armature_obj.pose.bones.get(upper_arm_bone_name)
-        forearm_bone = armature_obj.pose.bones.get(forearm_bone_name)
-
-        # Get bone positions in world space AFTER constraints are set
-        shoulder_pos = armature_obj.matrix_world @ shoulder_bone.tail
-        upper_arm_pos = armature_obj.matrix_world @ upper_arm_bone.head
-        elbow_pos = armature_obj.matrix_world @ upper_arm_bone.tail
-        forearm_pos = armature_obj.matrix_world @ forearm_bone.head
-        wrist_pos = armature_obj.matrix_world @ forearm_bone.tail
-
-        bpy.ops.object.mode_set(mode='OBJECT')
-
-        # Get sleeve dimensions from global garment_configs
-        sleeve_config = garment_configs.get(f"{side}_sleeve", garment_config)
-        diameter_start = sleeve_config.get("diameter_start", 0.15)
-        diameter_elbow = sleeve_config.get("diameter_elbow", 0.12)
-        diameter_end = sleeve_config.get("diameter_end", 0.08)
-        segments = sleeve_config.get("segments", 16)
-
-        # Get artist-controlled settings
-        subdivision_config = sleeve_config.get("subdivision", {})
-        manual_cuts = subdivision_config.get("manual_cuts", 1)
-        subdiv_levels = subdivision_config.get("subdiv_levels", 1)
-
-        weighting_config = sleeve_config.get("vertex_weighting", {})
-        falloff_type = weighting_config.get("sphere_falloff", "quadratic")
-        min_weight_threshold = weighting_config.get("min_weight_threshold", 0.05)
-        sphere_influence_scale = weighting_config.get("sphere_influence_scale", 2.0)
-
-        # Calculate segment lengths
-        upper_arm_length = (elbow_pos - upper_arm_pos).length
-        forearm_length = (wrist_pos - forearm_pos).length
-        total_length = upper_arm_length + forearm_length
-
-        script_log(
-            f"DEBUG: {side} sleeve - Upper arm length: {upper_arm_length:.3f}, Forearm length: {forearm_length:.3f}")
-        script_log(f"DEBUG: {side} sleeve - Total length: {total_length:.3f}")
-        script_log(f"DEBUG: {side} sleeve - Bone constraints: {constraints_added} added")
-
-        # CREATE SINGLE CONTINUOUS CYLINDER
-        script_log(f"DEBUG: Creating continuous {side} sleeve cylinder...")
-
-        # Use average radius for initial cylinder
-        avg_radius = (diameter_start / 2 + diameter_elbow / 2 + diameter_end / 2) / 3
-        bpy.ops.mesh.primitive_cylinder_add(
-            vertices=segments,
-            depth=total_length,
-            radius=avg_radius,
-            location=(shoulder_pos + wrist_pos) / 2  # Center between shoulder and wrist
-        )
-        sleeve_obj = bpy.context.active_object
-        sleeve_obj.name = f"{figure_name}_{side.capitalize()}Sleeve"
-
-        # Rotate to align with arm direction
-        arm_direction = (wrist_pos - shoulder_pos).normalized()
-        sleeve_obj.rotation_euler = arm_direction.to_track_quat('Z', 'Y').to_euler()
-
-        # ADD MANUAL SUBDIVISION
-        if manual_cuts > 0:
-            script_log(f"DEBUG: Adding {manual_cuts} manual subdivision cuts...")
-            bpy.context.view_layer.objects.active = sleeve_obj
-            bpy.ops.object.mode_set(mode='EDIT')
-            bpy.ops.mesh.select_mode(type='EDGE')
-            bpy.ops.mesh.select_all(action='SELECT')
-            bpy.ops.mesh.subdivide(number_cuts=manual_cuts)
-            bpy.ops.object.mode_set(mode='OBJECT')
-
-        # TAPER THE CONTINUOUS SLEEVE
-        script_log(f"DEBUG: Tapering {side} sleeve...")
-        bpy.context.view_layer.objects.active = sleeve_obj
-        bpy.ops.object.mode_set(mode='EDIT')
-        bm = bmesh.from_edit_mesh(sleeve_obj.data)
-
-        for vert in bm.verts:
-            # Normalize Z position from -0.5 (shoulder) to 0.5 (wrist)
-            z_norm = vert.co.z / (total_length / 2)
-
-            # Calculate target radius based on position along arm
-            if z_norm <= -0.2:  # Shoulder area
-                target_radius = diameter_start / 2
-            elif z_norm <= 0.2:  # Elbow area
-                target_radius = diameter_elbow / 2
-            else:  # Wrist area
-                target_radius = diameter_end / 2
-
-            # Smooth transitions between areas
-            if -0.2 < z_norm < 0:  # Shoulder → Elbow transition
-                blend = (z_norm + 0.2) / 0.2
-                target_radius = (diameter_start / 2 * (1 - blend)) + (diameter_elbow / 2 * blend)
-            elif 0 < z_norm < 0.2:  # Elbow → Wrist transition
-                blend = (z_norm) / 0.2
-                target_radius = (diameter_elbow / 2 * (1 - blend)) + (diameter_end / 2 * blend)
-
-            # Scale vertex to target radius
-            current_radius = (vert.co.x ** 2 + vert.co.y ** 2) ** 0.5
-            if current_radius > 0.001:
-                scale_factor = target_radius / current_radius
-                vert.co.x *= scale_factor
-                vert.co.y *= scale_factor
-
-        bmesh.update_edit_mesh(sleeve_obj.data)
-        bpy.ops.object.mode_set(mode='OBJECT')
-
-        # ADD SUBDIVISION SURFACE MODIFIER
-        if subdiv_levels > 0:
-            script_log(f"DEBUG: Adding subdivision surface with {subdiv_levels} levels...")
-            subdiv_mod = sleeve_obj.modifiers.new(name="Subdivision", type='SUBSURF')
-            subdiv_mod.levels = subdiv_levels
-            subdiv_mod.render_levels = subdiv_levels
-
-        # =========================================================================
-        # NEW VERTEX BUNDLES SYSTEM: SPHERICAL PINNING ZONE WEIGHTING
-        # =========================================================================
-        script_log(f"DEBUG: Setting up spherical pinning zones using new vertex bundles system for {side} sleeve")
-
-        # Create spherical vertex groups for pinning zones
-        shoulder_vertex_group = sleeve_obj.vertex_groups.new(name=f"Shoulder_Sphere_{side}")
-        wrist_vertex_group = sleeve_obj.vertex_groups.new(name=f"Wrist_Sphere_{side}")
-
-        # Get bundle centers and radii from new system
-        shoulder_center = get_bundle_center(shoulder_control_point)
-        wrist_center = get_bundle_center(wrist_control_point)
-
-        shoulder_radius = get_bundle_radius(shoulder_control_point)
-        wrist_radius = get_bundle_radius(wrist_control_point)
-
-        # Calculate sphere radii for influence
-        shoulder_sphere_radius = shoulder_radius * sphere_influence_scale
-        wrist_sphere_radius = wrist_radius * sphere_influence_scale
-
-        script_log(f"DEBUG: Using new bundle system - Shoulder: {shoulder_center}, Wrist: {wrist_center}")
-        script_log(f"DEBUG: Sphere radii - Shoulder: {shoulder_sphere_radius:.3f}, Wrist: {wrist_sphere_radius:.3f}")
-
-        # =========================================================================
-        # APPLY SHOULDER BUNDLE VERTEX WEIGHTS (SPHERICAL PINNING ZONE)
-        # =========================================================================
-        if shoulder_center:
-            script_log(f"✓ Applying shoulder vertex bundle from {shoulder_control_point}")
-
-            for i, vertex in enumerate(sleeve_obj.data.vertices):
-                vert_pos = sleeve_obj.matrix_world @ vertex.co
-                distance = (vert_pos - shoulder_center).length
-
-                # Apply weight based on distance to bundle center
-                if distance <= shoulder_sphere_radius:
-                    weight = 1.0 - (distance / shoulder_sphere_radius)
-                    # Apply falloff type
-                    if falloff_type == "quadratic":
-                        weight = weight * weight
-                    elif falloff_type == "smooth":
-                        weight = weight * weight * (3 - 2 * weight)
-
-                    # STRONGLY PIN SHOULDER AREA - full influence near shoulder
-                    vert_local = sleeve_obj.matrix_world.inverted() @ vert_pos
-                    z_norm = (vert_local.z + total_length / 2) / total_length  # 0=shoulder, 1=wrist
-
-                    if z_norm < 0.2:  # Shoulder area - full pinning
-                        weight *= 1.0
-                    elif z_norm < 0.4:  # Transition area - reduced influence
-                        weight *= 0.5
-                    else:  # Far from shoulder - minimal influence
-                        weight *= 0.1
-
-                    if weight > min_weight_threshold:
-                        shoulder_vertex_group.add([i], weight, 'REPLACE')
-
-        # =========================================================================
-        # APPLY WRIST BUNDLE VERTEX WEIGHTS (SPHERICAL PINNING ZONE)
-        # =========================================================================
-        if wrist_center:
-            script_log(f"✓ Applying wrist vertex bundle from {wrist_control_point}")
-
-            for i, vertex in enumerate(sleeve_obj.data.vertices):
-                vert_pos = sleeve_obj.matrix_world @ vertex.co
-                distance = (vert_pos - wrist_center).length
-
-                # Apply weight based on distance to bundle center
-                if distance <= wrist_sphere_radius:
-                    weight = 1.0 - (distance / wrist_sphere_radius)
-                    # Apply falloff type
-                    if falloff_type == "quadratic":
-                        weight = weight * weight
-                    elif falloff_type == "smooth":
-                        weight = weight * weight * (3 - 2 * weight)
-
-                    # STRONGLY PIN WRIST AREA - full influence near wrist
-                    vert_local = sleeve_obj.matrix_world.inverted() @ vert_pos
-                    z_norm = (vert_local.z + total_length / 2) / total_length  # 0=shoulder, 1=wrist
-
-                    if z_norm > 0.8:  # Wrist area - full pinning
-                        weight *= 1.0
-                    elif z_norm > 0.6:  # Transition area - reduced influence
-                        weight *= 0.5
-                    else:  # Far from wrist - minimal influence
-                        weight *= 0.1
-
-                    if weight > min_weight_threshold:
-                        wrist_vertex_group.add([i], weight, 'REPLACE')
-
-        # CREATE COMBINED PINNING GROUP FOR SLEEVE CLOTH
-        script_log(f"DEBUG: Creating combined pinning group for {side} sleeve...")
-        combined_pinning_group = sleeve_obj.vertex_groups.new(name=f"{side}_Sleeve_Combined_Anchors")
-
-        # Combine weights from both spherical groups (shoulder and wrist)
-        for i in range(len(sleeve_obj.data.vertices)):
-            max_weight = 0.0
-            for group_name in [f"Shoulder_Sphere_{side}", f"Wrist_Sphere_{side}"]:
-                group = sleeve_obj.vertex_groups.get(group_name)
-                if group:
-                    try:
-                        weight = group.weight(i)
-                        max_weight = max(max_weight, weight)
-                    except:
-                        # Vertex not in this group, continue
-                        pass
-
-            if max_weight > min_weight_threshold:
-                combined_pinning_group.add([i], max_weight, 'REPLACE')
-
-        script_log(f"✓ Created {side}_Sleeve_Combined_Anchors with weights from shoulder and wrist spheres")
-
-        # TARGETED CLOTH SIMULATION WITH PINNED ANCHORS
-        cloth_config = sleeve_config.get("cloth_settings", {})
-        if cloth_config.get("enabled", True):
-            script_log(f"DEBUG: Adding cloth simulation for {side} sleeve with pinned anchors...")
-            cloth_mod = sleeve_obj.modifiers.new(name="Cloth", type='CLOTH')
-
-            # Apply cloth settings from config
-            cloth_mod.settings.quality = cloth_config.get("quality", 8)
-            cloth_mod.settings.mass = cloth_config.get("mass", 0.15)
-            cloth_mod.settings.tension_stiffness = cloth_config.get("tension_stiffness", 8.0)
-            cloth_mod.settings.compression_stiffness = cloth_config.get("compression_stiffness", 7.0)
-            cloth_mod.settings.shear_stiffness = cloth_config.get("shear_stiffness", 6.0)
-            cloth_mod.settings.bending_stiffness = cloth_config.get("bending_stiffness", 0.8)
-            cloth_mod.settings.air_damping = cloth_config.get("air_damping", 0.8)
-            cloth_mod.settings.time_scale = cloth_config.get("time_scale", 1.0)
-
-            # COLLISIONS FOR FABRIC INTERACTION
-            cloth_mod.collision_settings.use_collision = True
-            cloth_mod.collision_settings.collision_quality = cloth_config.get("collision_quality", 6)
-            cloth_mod.collision_settings.self_distance_min = cloth_config.get("self_distance_min", 0.002)
-
-            # Self-collision for sleeve fabric
-            cloth_mod.collision_settings.use_self_collision = True
-
-            # PIN CLOTH TO COMBINED SPHERICAL VERTEX GROUP
-            cloth_mod.settings.vertex_group_mass = f"{side}_Sleeve_Combined_Anchors"
-
-            script_log(f"✓ Sleeve cloth: pinned anchors + self-collision + external collisions")
-        else:
-            script_log(f"DEBUG: Cloth simulation disabled for {side} sleeve")
-
-        # SETUP ARMATURE MODIFIER AND VERTEX GROUPS FOR BONE DEFORMATION
-        script_log(f"DEBUG: Setting up armature modifier and vertex groups for {side} sleeve...")
-
-        # Clear any existing vertex groups (except the spherical ones we just created)
-        groups_to_keep = [f"Shoulder_Sphere_{side}", f"Wrist_Sphere_{side}", f"{side}_Sleeve_Combined_Anchors"]
-        for vg in list(sleeve_obj.vertex_groups):
-            if vg.name not in groups_to_keep:
-                sleeve_obj.vertex_groups.remove(vg)
-
-        # Remove any existing armature modifiers
-        for mod in list(sleeve_obj.modifiers):
-            if mod.type == 'ARMATURE':
-                sleeve_obj.modifiers.remove(mod)
-
-        # Create vertex groups for bone deformation
-        shoulder_group = sleeve_obj.vertex_groups.new(name=shoulder_bone_name)
-        upper_arm_group = sleeve_obj.vertex_groups.new(name=upper_arm_bone_name)
-        forearm_group = sleeve_obj.vertex_groups.new(name=forearm_bone_name)
-
-        # Assign vertex weights based on position along sleeve
-        for i, vertex in enumerate(sleeve_obj.data.vertices):
-            vert_local = sleeve_obj.matrix_world.inverted() @ vertex.co
-            z_norm = (vert_local.z + total_length / 2) / total_length  # 0=shoulder, 1=wrist
-
-            if z_norm < 0.3:  # Upper part - shoulder to upper arm
-                shoulder_weight = 1.0 - (z_norm / 0.3)
-                upper_arm_weight = z_norm / 0.3
-                shoulder_group.add([i], shoulder_weight, 'REPLACE')
-                upper_arm_group.add([i], upper_arm_weight, 'REPLACE')
-            elif z_norm < 0.7:  # Middle part - upper arm to forearm
-                upper_arm_weight = 1.0 - ((z_norm - 0.3) / 0.4)
-                forearm_weight = (z_norm - 0.3) / 0.4
-                upper_arm_group.add([i], upper_arm_weight, 'REPLACE')
-                forearm_group.add([i], forearm_weight, 'REPLACE')
-            else:  # Lower part - forearm to wrist
-                forearm_weight = 1.0 - ((z_norm - 0.7) / 0.3)
-                forearm_group.add([i], forearm_weight, 'REPLACE')
-
-        # Add armature modifier
-        armature_mod = sleeve_obj.modifiers.new(name="Armature", type='ARMATURE')
-        armature_mod.object = armature_obj
-        armature_mod.use_vertex_groups = True
-        script_log(f"✓ Added armature modifier with vertex group deformation")
-
-        # Add material
-        apply_material_from_config(sleeve_obj, f"{side}_sleeve")
-
-        # SET PROPER MODIFIER ORDER
-        script_log(f"DEBUG: Setting proper modifier order for {side} sleeve...")
-        bpy.context.view_layer.objects.active = sleeve_obj
-        modifiers = sleeve_obj.modifiers
-
-        # Build correct order based on which modifiers are present
-        correct_order = ["Subdivision", "Armature"]
-        if cloth_config.get("enabled", True):
-            correct_order.append("Cloth")
-
-        for mod_name in correct_order:
-            mod_index = modifiers.find(mod_name)
-            if mod_index >= 0:
-                while mod_index > correct_order.index(mod_name):
-                    bpy.ops.object.modifier_move_up(modifier=mod_name)
-                    mod_index -= 1
-
-        # VERIFY THE SETUP
-        script_log(f"DEBUG: Verifying {side} sleeve setup...")
-        if cloth_config.get("enabled",
-                            True) and cloth_mod.settings.vertex_group_mass == f"{side}_Sleeve_Combined_Anchors":
-            script_log(f"✓ Cloth pinned to {side}_Sleeve_Combined_Anchors vertex group")
-        else:
-            script_log(f"⚠ Cloth not pinned to spherical vertex group (simulation disabled)")
-
-        script_log(f"✓ Created {side} sleeve with spherical pinning zone weighting")
-        script_log(f"✓ Bone constraints: {constraints_added} STRETCH_TO constraints added")
-        script_log(f"✓ Vertices weighted to shoulder and wrist spherical pinning zones")
-        script_log(f"✓ Armature modifier configured for deformation")
-        script_log(f"✓ Sleeve object parented to armature")
-        if cloth_config.get("enabled", True):
-            script_log(f"✓ Cloth pinned to combined anchors (shoulder+wrist)")
-            script_log(f"✓ Modern Blender 4.3+ cloth API applied")
-            script_log(f"✓ Self-collision enabled for sleeve fabric")
-        script_log(f"✓ Using new vertex bundles system for dynamic joint positioning")
-
-        return sleeve_obj
-
-    except Exception as e:
-        script_log(f"ERROR creating {side} sleeve: {e}")
-        import traceback
-        script_log(f"Traceback: {traceback.format_exc()}")
-        bpy.ops.object.mode_set(mode='OBJECT')
+    """Create sleeve using spheres at joints and tapered cylinders between them"""
+    script_log(f"Creating {side} sleeve with sphere-based approach...")
+
+    # Get sleeve configuration
+    diameter_shoulder = garment_configs.get("diameter_start", 0.15)
+    diameter_elbow = garment_configs.get("diameter_elbow", 0.12)
+    diameter_wrist = garment_configs.get("diameter_end", 0.08)
+    segments = garment_configs.get("segments", 32)
+
+    # Get correct control point names
+    side_upper = side.upper()
+    shoulder_control_name = f"CTRL_{side_upper}_SHOULDER"
+    elbow_control_name = f"CTRL_{side_upper}_ELBOW"
+    wrist_control_name = f"CTRL_{side_upper}_WRIST"
+
+    # Get joint control systems using correct names
+    shoulder_control = joint_control_systems.get(shoulder_control_name, {})
+    elbow_control = joint_control_systems.get(elbow_control_name, {})
+    wrist_control = joint_control_systems.get(wrist_control_name, {})
+
+    if not all([shoulder_control, elbow_control, wrist_control]):
+        script_log(f"Warning: Missing joint control systems for {side} sleeve")
         return None
+
+    # Use VB empties (these are the actual empties that follow control points)
+    shoulder_vb_empty = shoulder_control.get('rpy_empty')
+    elbow_vb_empty = elbow_control.get('rpy_empty')
+    wrist_vb_empty = wrist_control.get('rpy_empty')
+
+    if not all([shoulder_vb_empty, elbow_vb_empty, wrist_vb_empty]):
+        script_log(f"ERROR: Missing RPY empties for {side} sleeve")
+        return None
+
+    # Store created objects
+    sleeve_objects = []
+
+    # =========================================================================
+    # CREATE SPHERES
+    # =========================================================================
+    script_log(f"Creating shoulder sphere for {side} sleeve...")
+    shoulder_sphere = create_sphere(
+        name=f"{figure_name}_{side}_sleeve_shoulder_sphere",
+        diameter=diameter_shoulder,
+        segments=segments,
+        location=(0, 0, 0)
+    )
+    shoulder_sphere.parent = shoulder_vb_empty
+    setup_joint_sphere_empties(shoulder_sphere, shoulder_control_name, armature_obj)
+    apply_material_from_config(shoulder_sphere, f"{side}_sleeve")
+    sleeve_objects.append(shoulder_sphere)
+    script_log(f"Created shoulder sphere at {shoulder_vb_empty.location}")
+
+    # Elbow sphere
+    script_log(f"Creating elbow sphere for {side} sleeve...")
+    elbow_sphere = create_sphere(
+        name=f"{figure_name}_{side}_sleeve_elbow_sphere",
+        diameter=diameter_elbow,
+        segments=segments,
+        location=(0, 0, 0)
+    )
+    elbow_sphere.parent = elbow_vb_empty
+    setup_joint_sphere_empties(elbow_sphere, elbow_control_name, armature_obj)
+    apply_material_from_config(elbow_sphere, f"{side}_sleeve")
+    sleeve_objects.append(elbow_sphere)
+    script_log(f"Created elbow sphere at {elbow_vb_empty.location}")
+
+    # Wrist sphere
+    script_log(f"Creating wrist sphere for {side} sleeve...")
+    wrist_sphere = create_sphere(
+        name=f"{figure_name}_{side}_sleeve_wrist_sphere",
+        diameter=diameter_wrist,
+        segments=segments,
+        location=(0, 0, 0)
+    )
+    wrist_sphere.parent = wrist_vb_empty
+    setup_joint_sphere_empties(wrist_sphere, wrist_control_name, armature_obj)
+    apply_material_from_config(wrist_sphere, f"{side}_sleeve")
+    sleeve_objects.append(wrist_sphere)
+    script_log(f"Created wrist sphere at {wrist_vb_empty.location}")
+
+    # =========================================================================
+    # CREATE CYLINDERS WITH PROPER STRETCH-TO BEHAVIOR
+    # =========================================================================
+    script_log(f"Creating upper arm cylinder for {side} sleeve...")
+
+    # Create cylinder that will stretch from shoulder to elbow
+    upper_arm_cylinder = create_stretchable_cylinder(
+        name=f"{figure_name}_{side}_sleeve_upper_arm_cylinder",
+        start_diameter=diameter_shoulder,
+        end_diameter=diameter_elbow,
+        segments=segments,
+        start_empty=shoulder_vb_empty,
+        end_empty=elbow_vb_empty
+    )
+
+    # Upper arm cylinder spans from shoulder bone to elbow bone
+    shoulder_bone = "DEF_LeftShoulder" if side == "left" else "DEF_RightShoulder"
+    upper_arm_bone = "DEF_LeftUpperArm" if side == "left" else "DEF_RightUpperArm"
+    setup_sleeve_cylinder_vertex_groups(upper_arm_cylinder, shoulder_vb_empty, shoulder_bone, upper_arm_bone, armature_obj)
+    apply_material_from_config(upper_arm_cylinder, f"{side}_sleeve")
+    sleeve_objects.append(upper_arm_cylinder)
+
+    script_log(f"Creating forearm cylinder for {side} sleeve...")
+
+    # Create cylinder that will stretch from elbow to wrist
+    forearm_cylinder = create_stretchable_cylinder(
+        name=f"{figure_name}_{side}_sleeve_forearm_cylinder",
+        start_diameter=diameter_elbow,
+        end_diameter=diameter_wrist,
+        segments=segments,
+        start_empty=elbow_vb_empty,
+        end_empty=wrist_vb_empty
+    )
+
+    # Forearm cylinder spans from elbow bone to wrist bone
+    elbow_bone = "DEF_LeftElbow" if side == "left" else "DEF_RightElbow"
+    wrist_bone = "DEF_LeftWrist" if side == "left" else "DEF_RightWrist"
+    setup_sleeve_cylinder_vertex_groups(forearm_cylinder, elbow_vb_empty, elbow_bone, wrist_bone, armature_obj)
+    apply_material_from_config(forearm_cylinder, f"{side}_sleeve")
+    sleeve_objects.append(forearm_cylinder)
+
+    script_log(f"Successfully created {side} sleeve with {len(sleeve_objects)} components")
+    script_log(f"✓ Z-axis constraints: Shoulder→Elbow, Elbow→Wrist, Wrist→Index")
+    script_log(f"✓ Proper vertex group setup for all components")
+
+    # Return the main sleeve object (shoulder sphere) for compatibility
+    return sleeve_objects[0] if sleeve_objects else None
 
 ##########################################################################################
 
