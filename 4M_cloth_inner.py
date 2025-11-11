@@ -3752,499 +3752,6 @@ def setup_pants_vertex_groups_to_vb(pants_obj, side, hip_vb, knee_vb, heel_vb):
 
 ##########################################################################################
 
-def create_coat(armature_obj, figure_name):
-    """Create coat torso garment with shoulder coordination and length variations using two-empties system"""
-    script_log("Creating coat torso garment...")
-
-    # Get coat configuration
-    coat_length = garment_configs.get("coat_length", "short")  # "short" or "long"
-    radial_segments = garment_configs.get("radial_segments", 32)
-    longitudinal_segments = garment_configs.get("longitudinal_segments", 24)
-    torso_radius = garment_configs.get("torso_radius", 0.25)
-    coat_height = garment_configs.get("coat_height", 0.8)
-    puffiness = garment_configs.get("puffiness", 1.05)
-
-    # GET SHOULDER DIAMETER FROM SLEEVE CONFIG
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    CLOTH_CONFIG_FILE = os.path.join(script_dir, "4M_cloth_config.json")
-
-    diameter_shoulder = 0.15  # Fallback value
-    try:
-        with open(CLOTH_CONFIG_FILE, 'r') as file:
-            cloth_config_data = json.load(file)
-            sleeve_config = cloth_config_data.get("cloth_garments", {}).get("left_sleeve", {})
-            diameter_shoulder = sleeve_config.get("diameter_shoulder", 0.15)  # Get from sleeve config
-    except:
-        script_log(f"⚠ Could not load shoulder diameter from config, using fallback: {diameter_shoulder}")
-
-    script_log(f"DEBUG: Coat - Length: {coat_length}, Radial segments: {radial_segments}")
-    script_log(f"DEBUG: Coat - Longitudinal segments: {longitudinal_segments}, Height: {coat_height}")
-    script_log(
-        f"DEBUG: Coat - Torso radius: {torso_radius}, Shoulder diameter: {diameter_shoulder}, Puffiness: {puffiness}")
-
-    # Get shoulder positions for coordination
-    bpy.context.view_layer.objects.active = armature_obj
-    bpy.ops.object.mode_set(mode='POSE')
-
-    try:
-        # Get shoulder and spine bones for positioning
-        left_shoulder_bone = armature_obj.pose.bones.get("DEF_LeftShoulder")
-        right_shoulder_bone = armature_obj.pose.bones.get("DEF_RightShoulder")
-        neck_bone = armature_obj.pose.bones.get("DEF_Neck")
-        upper_spine_bone = armature_obj.pose.bones.get("DEF_UpperSpine")
-
-        bpy.ops.object.mode_set(mode='OBJECT')
-
-        if not all([left_shoulder_bone, right_shoulder_bone, neck_bone, upper_spine_bone]):
-            script_log("ERROR: Could not find required bones for coat")
-            return None
-
-        # Get bone positions in world space
-        left_shoulder_pos = armature_obj.matrix_world @ left_shoulder_bone.tail
-        right_shoulder_pos = armature_obj.matrix_world @ right_shoulder_bone.tail
-        upper_spine_pos = armature_obj.matrix_world @ upper_spine_bone.head
-
-        # Calculate coat dimensions
-        shoulder_width = (right_shoulder_pos - left_shoulder_pos).length
-        shoulder_center = (left_shoulder_pos + right_shoulder_pos) / 2
-        spine_to_shoulder = (shoulder_center - upper_spine_pos).length
-
-        # =========================================================================
-        # STEP 1: CREATE VERTICAL CYLINDER (MAIN BODY) - APPLY Y-SQUISH TO MATCH SHOULDER DIAMETER
-        # =========================================================================
-        script_log("DEBUG: Creating vertical cylinder for coat body...")
-
-        # Position cylinder centered at shoulders, extending downward
-        vertical_center = shoulder_center + Vector((0, 0, -coat_height / 2))
-
-        bpy.ops.mesh.primitive_cylinder_add(
-            vertices=radial_segments,
-            depth=coat_height,
-            radius=torso_radius,  # Starts with torso_radius = 0.25 from config
-            location=vertical_center
-        )
-        vertical_cylinder = bpy.context.active_object
-        vertical_cylinder.name = f"{figure_name}_Coat_Vertical"
-
-        # CALCULATE Y SCALE TO MATCH SHOULDER DIAMETER
-        # Current Y diameter = torso_radius * 2 = 0.25 * 2 = 0.50
-        # Target Y diameter = shoulder_diameter = 0.15
-        # Y scale ratio = target / current = 0.15 / 0.50 = 0.3
-        y_scale_ratio = diameter_shoulder / (torso_radius * 2)
-
-        # Apply Y-squish: X=1.0, Y=calculated ratio, Z=1.0
-        vertical_cylinder.scale = (1.0, y_scale_ratio, 1.0)
-        script_log(
-            f"✓ Vertical cylinder Y-squish: torso_radius={torso_radius} → Y-scale={y_scale_ratio:.3f} to match diameter_shoulder={diameter_shoulder}")
-
-        # =========================================================================
-        # STEP 2: ADD VERTICAL SUBDIVISIONS FOR Z-AXIS FLEXIBILITY (PRESERVE SHAPE)
-        # =========================================================================
-        script_log("DEBUG: Adding vertical subdivisions for coat flexibility...")
-
-        # Get longitudinal segments from config
-        longitudinal_segments = garment_configs.get("longitudinal_segments", 24)
-        # Subtract 1 because the cylinder already has top and bottom rings
-        number_cuts = max(1, longitudinal_segments - 1)
-
-        script_log(f"DEBUG: Using {longitudinal_segments} longitudinal segments, adding {number_cuts} vertical cuts")
-
-        bpy.context.view_layer.objects.active = vertical_cylinder
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_mode(type='EDGE')
-
-        # Select all vertical edges
-        bpy.ops.mesh.select_all(action='DESELECT')
-
-        bm = bmesh.from_edit_mesh(vertical_cylinder.data)
-
-        for edge in bm.edges:
-            # Check if edge is approximately vertical (different Z coordinates)
-            if abs(edge.verts[0].co.z - edge.verts[1].co.z) > 0.01:
-                edge.select = True
-
-        # Subdivide only the selected vertical edges using config value
-        bpy.ops.mesh.subdivide(number_cuts=number_cuts, smoothness=0.0)
-
-        bpy.ops.object.mode_set(mode='OBJECT')
-        script_log(f"✓ Added {number_cuts} vertical subdivisions using longitudinal_segments={longitudinal_segments}")
-
-        # =========================================================================
-        # STEP 3: LONG COAT - QUARTER SEPARATION (FRONT SPLIT) AND DELETE BOTTOM FACE
-        # =========================================================================
-        if coat_length == "long":
-            script_log("DEBUG: Creating front split and deleting bottom face for long coat...")
-
-            # Get skirt_start_ratio from config with fallback
-            long_coat_settings = garment_configs.get("coat_length_settings", {}).get("long", {})
-            skirt_start_ratio = long_coat_settings.get("skirt_start_ratio", 0.6)  # Default to 0.6 if not specified
-
-            # Calculate skirt region dimensions (bottom portion of coat)
-            skirt_start_z = -coat_height * (1 - skirt_start_ratio)
-            split_depth = coat_height * 0.8
-            split_width = 0.05
-
-            script_log(f"DEBUG: Long coat skirt starts at {skirt_start_ratio * 100}% down (z={skirt_start_z:.3f})")
-
-            # Create split cutter object (thin vertical plane)
-            bpy.ops.mesh.primitive_plane_add(
-                size=split_depth,
-                location=vertical_center + Vector((0, 0, skirt_start_z))
-            )
-            split_cutter = bpy.context.active_object
-            split_cutter.name = f"{figure_name}_CoatSplit_Cutter"
-
-            # Scale cutter to be a thin vertical strip
-            split_cutter.scale = (1.0, split_width / split_depth, 1.0)
-            split_cutter.rotation_euler = (0, math.radians(90), 0)
-
-            # Position cutter at front center of coat
-            split_cutter.location.y = vertical_cylinder.location.y + diameter_shoulder * 0.5
-
-            # Add Boolean modifier to subtract split from coat
-            bool_split = vertical_cylinder.modifiers.new(name="Split_Front", type='BOOLEAN')
-            bool_split.operation = 'DIFFERENCE'
-            bool_split.object = split_cutter
-            bool_split.solver = 'FAST'
-
-            # Apply the Boolean subtraction
-            bpy.context.view_layer.objects.active = vertical_cylinder
-            bpy.ops.object.modifier_apply(modifier="Split_Front")
-
-            # Remove the cutter object
-            bpy.data.objects.remove(split_cutter, do_unlink=True)
-
-            script_log("✓ Created front split using Boolean subtraction in FAST mode")
-
-            # The bottom face deletion creates the open-bottom cylinder needed
-            # for the coat torso, allowing it to drape naturally over the
-            # lower body while maintaining the closed top at the shoulders.
-
-            # Find and delete bottom face of vertical cylinder
-            script_log("Finding and deleting bottom face of vertical cylinder...")
-            bpy.context.view_layer.objects.active = vertical_cylinder
-            bpy.ops.object.mode_set(mode='EDIT')
-            bpy.ops.mesh.select_mode(type='FACE')
-            bpy.ops.mesh.select_all(action='DESELECT')
-
-            # Calculate the Z threshold for bottom face (shoulder_center Z minus coat_height)
-            bottom_z_threshold = shoulder_center.z - coat_height + 0.01  # Small tolerance
-
-            bm = bmesh.from_edit_mesh(vertical_cylinder.data)
-            bottom_faces = []
-
-            for face in bm.faces:
-                # Check if all vertices in this face are near the bottom
-                all_vertices_bottom = True
-                for vert in face.verts:
-                    world_pos = vertical_cylinder.matrix_world @ vert.co
-                    if abs(world_pos.z - bottom_z_threshold) > 0.02:  # 2cm tolerance
-                        all_vertices_bottom = False
-                        break
-
-                if all_vertices_bottom:
-                    bottom_faces.append(face)
-
-            # Select and delete bottom faces
-            if bottom_faces:
-                bmesh.ops.delete(bm, geom=bottom_faces, context='FACES')
-                script_log(f"Deleted {len(bottom_faces)} bottom face(s)")
-            else:
-                script_log("WARNING: No bottom face found to delete")
-
-            bmesh.update_edit_mesh(vertical_cylinder.data)
-            bpy.ops.object.mode_set(mode='OBJECT')
-
-        # =========================================================================
-        # STEP 4: CREATE HORIZONTAL CYLINDER (SHOULDERS/CHEST)
-        # =========================================================================
-        script_log(f"DEBUG: Creating horizontal cylinder for shoulders, width {shoulder_width}...")
-
-        # Position horizontal cylinder between shoulders
-        horizontal_center = shoulder_center
-        shoulder_vector = (right_shoulder_pos - left_shoulder_pos).normalized()
-
-        bpy.ops.mesh.primitive_cylinder_add(
-            vertices=radial_segments,
-            depth=shoulder_width,
-            radius=diameter_shoulder / 2.0,
-            location=horizontal_center
-        )
-        horizontal_cylinder = bpy.context.active_object
-        horizontal_cylinder.name = f"{figure_name}_Coat_Horizontal"
-
-        # Rotate to align with shoulder line
-        horizontal_cylinder.rotation_euler = shoulder_vector.to_track_quat('Z', 'Y').to_euler()
-
-        # =========================================================================
-        # STEP 5: COMBINE CYLINDERS WITH BOOLEAN UNION
-        # =========================================================================
-        script_log("DEBUG: Combining cylinders with boolean union...")
-
-        # Set vertical cylinder as main object
-        coat_obj = vertical_cylinder
-        coat_obj.name = f"{figure_name}_Coat"
-
-        # Add boolean modifier to combine with horizontal cylinder
-        boolean_mod = coat_obj.modifiers.new(name="Boolean_Union", type='BOOLEAN')
-        boolean_mod.operation = 'UNION'
-        boolean_mod.object = horizontal_cylinder
-
-        # Apply boolean modifier
-        bpy.context.view_layer.objects.active = coat_obj
-        bpy.ops.object.modifier_apply(modifier="Boolean_Union")
-
-        # Remove horizontal cylinder
-        bpy.data.objects.remove(horizontal_cylinder, do_unlink=True)
-
-        # =========================================================================
-        # STEP 6: SMOOTH ARMPIT AREAS
-        # =========================================================================
-        smooth_armpits = garment_configs.get("smooth_armpits", False)
-        if smooth_armpits:
-            script_log("DEBUG: Smoothing armpit areas...")
-
-            bpy.context.view_layer.objects.active = coat_obj
-            bpy.ops.object.mode_set(mode='EDIT')
-            bpy.ops.mesh.select_mode(type='VERT')  # Blender 4.4.4 uses 'VERT' not 'VERTEX'
-
-            # Select vertices in armpit regions and smooth them
-            bm = bmesh.from_edit_mesh(coat_obj.data)
-
-            for vert in bm.verts:
-                # Armpit regions are around the shoulder connections
-                vert_local = coat_obj.matrix_world.inverted() @ vert.co
-                if abs(vert_local.x) > torso_radius * 0.8 and vert_local.z > -0.1:
-                    vert.select = True
-
-            if any(v.select for v in bm.verts):
-                bpy.ops.mesh.vertices_smooth(factor=0.5, repeat=3)
-
-            bpy.ops.object.mode_set(mode='OBJECT')
-
-        # =========================================================================
-        # STEP 7: SETUP VERTEX GROUPS WITH TWO-EMPTIES DYNAMIC SYSTEM
-        # =========================================================================
-        script_log("DEBUG: Setting up coat vertex groups with two-empties dynamic system...")
-
-        # Clear any existing parenting
-        coat_obj.parent = None
-
-        # Clear any existing vertex groups
-        for vg in list(coat_obj.vertex_groups):
-            coat_obj.vertex_groups.remove(vg)
-
-        # Remove any existing armature modifiers
-        for mod in list(coat_obj.modifiers):
-            if mod.type == 'ARMATURE':
-                coat_obj.modifiers.remove(mod)
-
-        # NEW: USE TWO-EMPTIES SYSTEM FOR DYNAMIC VERTEX WEIGHTS
-        script_log("DEBUG: Setting up dynamic vertex weights using two-empties system for coat")
-
-        # Get control point names for the two-empties system
-        left_shoulder_cp = "CTRL_LEFT_SHOULDER"
-        right_shoulder_cp = "CTRL_RIGHT_SHOULDER"
-
-        # Get vertex bundle centers and radii from two-empties system
-        left_shoulder_center = get_bundle_center(left_shoulder_cp)
-        right_shoulder_center = get_bundle_center(right_shoulder_cp)
-
-        # Get radii with garment-specific adjustments
-        left_shoulder_radius = get_bundle_radius(left_shoulder_cp)
-        right_shoulder_radius = get_bundle_radius(right_shoulder_cp)
-
-        # Initialize vertex groups and store data for dynamic setup
-        vertex_data = {
-            left_shoulder_cp: [],
-            right_shoulder_cp: []
-        }
-
-        # Create vertex groups for two-empties system
-        left_shoulder_group = coat_obj.vertex_groups.new(name=left_shoulder_cp)
-        right_shoulder_group = coat_obj.vertex_groups.new(name=right_shoulder_cp)
-
-        # Apply initial vertex group weighting AND collect data for dynamic setup
-        mesh = coat_obj.data
-        for vert in mesh.vertices:
-            vert_co = coat_obj.matrix_world @ vert.co
-            vert_height = vert_co.z - shoulder_center.z  # Relative to shoulders
-
-            # LEFT SHOULDER WEIGHTING
-            dist_to_left_shoulder = (vert_co - left_shoulder_center).length
-            if dist_to_left_shoulder <= left_shoulder_radius:
-                base_weight = 1.0 - (dist_to_left_shoulder / left_shoulder_radius)
-
-                # Shoulders influence top section
-                height_factor = max(0.0, 1.0 - (abs(vert_height) / (coat_height * 0.3)))
-                final_weight = base_weight * height_factor
-
-                # Shoulder-specific: enhance influence near armholes
-                if abs(vert_co.x - left_shoulder_center.x) < left_shoulder_radius * 0.5:
-                    final_weight *= 1.2
-
-                if final_weight > 0.01:
-                    left_shoulder_group.add([vert.index], final_weight, 'REPLACE')
-                    vertex_data[left_shoulder_cp].append((vert.index, final_weight))
-
-            # RIGHT SHOULDER WEIGHTING
-            dist_to_right_shoulder = (vert_co - right_shoulder_center).length
-            if dist_to_right_shoulder <= right_shoulder_radius:
-                base_weight = 1.0 - (dist_to_right_shoulder / right_shoulder_radius)
-
-                # Shoulders influence top section
-                height_factor = max(0.0, 1.0 - (abs(vert_height) / (coat_height * 0.3)))
-                final_weight = base_weight * height_factor
-
-                # Shoulder-specific: enhance influence near armholes
-                if abs(vert_co.x - right_shoulder_center.x) < right_shoulder_radius * 0.5:
-                    final_weight *= 1.2
-
-                if final_weight > 0.01:
-                    right_shoulder_group.add([vert.index], final_weight, 'REPLACE')
-                    vertex_data[right_shoulder_cp].append((vert.index, final_weight))
-
-        # SET UP DYNAMIC VERTEX WEIGHTS - NEW FUNCTIONALITY
-        script_log("Setting up dynamic vertex weights for coat...")
-        drivers_created = 0
-        for point_name, vertices_weights in vertex_data.items():
-            if vertices_weights:  # Only if we have vertices for this control point
-                vertex_indices = [vw[0] for vw in vertices_weights]
-                initial_weights = [vw[1] for vw in vertices_weights]
-
-                script_log(f"Setting up {len(vertex_indices)} dynamic vertices for {point_name}")
-                setup_dynamic_vertex_weights(coat_obj, point_name, vertex_indices, initial_weights, joint_control_systems)
-                drivers_created += len(vertex_indices)
-            else:
-                script_log(f"No vertices found for {point_name}, skipping dynamic setup")
-
-        script_log(f"Total dynamic drivers created for coat: {drivers_created}")
-
-        # Combined group for cloth pinning (backward compatibility)
-        combined_anchors_group = coat_obj.vertex_groups.new(name="Coat_Combined_Anchors")
-
-        # Combine weights from all control points
-        for i in range(len(coat_obj.data.vertices)):
-            max_weight = 0.0
-            for group_name in [left_shoulder_cp, right_shoulder_cp]:
-                group = coat_obj.vertex_groups.get(group_name)
-                if group:
-                    try:
-                        weight = group.weight(i)
-                        max_weight = max(max_weight, weight)
-                    except:
-                        # Vertex not in this group, continue
-                        pass
-
-            if max_weight > 0.1:  # Higher threshold for coat
-                combined_anchors_group.add([i], max_weight, 'REPLACE')
-
-        script_log(f"✓ Created Coat_Combined_Anchors with weights from two-empties system")
-
-        # =========================================================================
-        # STEP 8: ADD ARMATURE MODIFIER
-        # =========================================================================
-        script_log("DEBUG: Adding armature modifier...")
-
-        # Add armature modifier
-        armature_mod = coat_obj.modifiers.new(name="Armature", type='ARMATURE')
-        armature_mod.object = armature_obj
-        armature_mod.use_vertex_groups = True
-
-        # =========================================================================
-        # STEP 9: ADD CLOTH SIMULATION WITH SIMPLE COLLISIONS
-        # =========================================================================
-        script_log("DEBUG: Adding cloth simulation with simple collisions...")
-        cloth_config = garment_configs.get("cloth_settings", {})
-
-        if cloth_config.get("enabled", True):
-            cloth_mod = coat_obj.modifiers.new(name="Cloth", type='CLOTH')
-
-            # Apply cloth settings from config
-            cloth_mod.settings.quality = cloth_config.get("quality", 12)
-            cloth_mod.settings.mass = cloth_config.get("mass", 0.3)
-            cloth_mod.settings.tension_stiffness = cloth_config.get("tension_stiffness", 8.0)
-            cloth_mod.settings.compression_stiffness = cloth_config.get("compression_stiffness", 7.0)
-            cloth_mod.settings.shear_stiffness = cloth_config.get("shear_stiffness", 5.0)
-            cloth_mod.settings.bending_stiffness = cloth_config.get("bending_stiffness", 0.8)
-            cloth_mod.settings.air_damping = cloth_config.get("air_damping", 0.8)
-            cloth_mod.settings.time_scale = cloth_config.get("time_scale", 1.0)
-
-            # SIMPLE COLLISIONS - COAT WILL INTERACT WITH PANTS AUTOMATICALLY
-            cloth_mod.collision_settings.use_collision = True
-            cloth_mod.collision_settings.collision_quality = cloth_config.get("collision_quality", 6)
-            cloth_mod.collision_settings.distance_min = cloth_config.get("external_distance_min", 0.005)
-
-            # Self-collision for coat fabric
-            cloth_mod.collision_settings.use_self_collision = True
-            cloth_mod.collision_settings.self_distance_min = cloth_config.get("self_distance_min", 0.002)
-
-            # PIN ENTIRE COAT TO COMBINED ANCHORS
-            cloth_mod.settings.vertex_group_mass = "Coat_Combined_Anchors"
-
-            script_log("✓ Coat cloth: dynamic vertex pinning + simple collisions (will interact with pants)")
-        else:
-            script_log("DEBUG: Cloth simulation disabled for coat")
-
-        # =========================================================================
-        # STEP 10: ADD MATERIALS
-        # =========================================================================
-        script_log("DEBUG: Adding coat materials...")
-
-        apply_material_from_config(coat_obj, "coat_torso", material_name="Coat_Material", fallback_color=(0.1, 0.3, 0.8, 1.0))
-
-        # =========================================================================
-        # STEP 11: SET MODIFIER ORDER (NO SUBDIVISION)
-        # =========================================================================
-        script_log("DEBUG: Setting modifier order (no subdivision)...")
-
-        bpy.context.view_layer.objects.active = coat_obj
-        modifiers = coat_obj.modifiers
-
-        # Remove Subdivision modifier if it exists
-        if "Subdivision" in modifiers:
-            modifiers.remove(modifiers["Subdivision"])
-            script_log("✓ Removed Subdivision modifier - using manual geometry control")
-
-        # Build correct order based on which modifiers are present
-        correct_order = ["Armature"]
-        if cloth_config.get("enabled", True):
-            correct_order.append("Cloth")
-
-        for mod_name in correct_order:
-            mod_index = modifiers.find(mod_name)
-            if mod_index >= 0:
-                while mod_index > correct_order.index(mod_name):
-                    bpy.ops.object.modifier_move_up(modifier=mod_name)
-                    mod_index -= 1
-
-        # =========================================================================
-        # STEP 12: FINAL VERIFICATION
-        # =========================================================================
-        bpy.context.view_layer.update()
-
-        script_log(f"=== COAT TORSO CREATION COMPLETE ===")
-        script_log(f"✓ Coat type: {coat_length}")
-        script_log(f"✓ Height: {coat_height:.3f}")
-        script_log(f"✓ Shoulder width: {shoulder_width:.3f}")
-        script_log(f"✓ Torso radius: {torso_radius}")
-        script_log(f"✓ Front split: {'CREATED' if coat_length == 'long' else 'NOT APPLIED'}")
-        script_log(f"✓ Cloth simulation: {'ENABLED' if cloth_config.get('enabled', True) else 'DISABLED'}")
-        script_log(f"✓ Dynamic vertex drivers: {drivers_created} created")
-        script_log(f"✓ Control points: {left_shoulder_cp}, {right_shoulder_cp}")
-        script_log(f"✓ Using two-empties system for dynamic vertex weight updates during animation")
-
-        return coat_obj
-
-    except Exception as e:
-        script_log(f"ERROR creating coat: {e}")
-        import traceback
-        script_log(f"Traceback: {traceback.format_exc()}")
-        bpy.ops.object.mode_set(mode='OBJECT')
-        return None
-
-##########################################################################################
-
 def create_mitten(armature_obj, figure_name, garment_config, global_cloth_settings, side="left"):
     """Create mitten with seamless thumb attachment using new vertex bundles system"""
     script_log(f"Creating {side} mitten with seamless thumb attachment...")
@@ -4662,6 +4169,559 @@ def create_mitten(armature_obj, figure_name, garment_config, global_cloth_settin
 
     except Exception as e:
         script_log(f"ERROR creating {side} mitten: {e}")
+        import traceback
+        script_log(f"Traceback: {traceback.format_exc()}")
+        bpy.ops.object.mode_set(mode='OBJECT')
+        return None
+
+##########################################################################################
+
+def create_coat(armature_obj, figure_name):
+    """Create coat torso garment with shoulder coordination and length variations using XYZ empties for pinning"""
+    script_log("Creating coat torso garment...")
+
+    # Get coat configuration
+    coat_length = garment_configs.get("coat_length", "short")  # "short" or "long"
+    radial_segments = garment_configs.get("radial_segments", 32)
+    longitudinal_segments = garment_configs.get("longitudinal_segments", 24)
+    torso_radius = garment_configs.get("torso_radius", 0.25)
+    coat_height = garment_configs.get("coat_height", 0.8)
+    puffiness = garment_configs.get("puffiness", 1.05)
+
+    # GET SHOULDER DIAMETER FROM SLEEVE CONFIG
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    CLOTH_CONFIG_FILE = os.path.join(script_dir, "4M_cloth_config.json")
+
+    diameter_shoulder = 0.15  # Fallback value
+    try:
+        with open(CLOTH_CONFIG_FILE, 'r') as file:
+            cloth_config_data = json.load(file)
+            sleeve_config = cloth_config_data.get("cloth_garments", {}).get("left_sleeve", {})
+            diameter_shoulder = sleeve_config.get("diameter_shoulder", 0.15)  # Get from sleeve config
+    except:
+        script_log(f"⚠ Could not load shoulder diameter from config, using fallback: {diameter_shoulder}")
+
+    script_log(f"DEBUG: Coat - Length: {coat_length}, Radial segments: {radial_segments}")
+    script_log(f"DEBUG: Coat - Longitudinal segments: {longitudinal_segments}, Height: {coat_height}")
+    script_log(
+        f"DEBUG: Coat - Torso radius: {torso_radius}, Shoulder diameter: {diameter_shoulder}, Puffiness: {puffiness}")
+
+    # Get shoulder positions for coordination
+    bpy.context.view_layer.objects.active = armature_obj
+    bpy.ops.object.mode_set(mode='POSE')
+
+    try:
+        # Get shoulder and spine bones for positioning
+        left_shoulder_bone = armature_obj.pose.bones.get("DEF_LeftShoulder")
+        right_shoulder_bone = armature_obj.pose.bones.get("DEF_RightShoulder")
+        neck_bone = armature_obj.pose.bones.get("DEF_Neck")
+        upper_spine_bone = armature_obj.pose.bones.get("DEF_UpperSpine")
+
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+        if not all([left_shoulder_bone, right_shoulder_bone, neck_bone, upper_spine_bone]):
+            script_log("ERROR: Could not find required bones for coat")
+            return None
+
+        # Get bone positions in world space
+        left_shoulder_pos = armature_obj.matrix_world @ left_shoulder_bone.tail
+        right_shoulder_pos = armature_obj.matrix_world @ right_shoulder_bone.tail
+        upper_spine_pos = armature_obj.matrix_world @ upper_spine_bone.head
+
+        # Calculate coat dimensions
+        shoulder_width = (right_shoulder_pos - left_shoulder_pos).length
+        shoulder_center = (left_shoulder_pos + right_shoulder_pos) / 2
+        spine_to_shoulder = (shoulder_center - upper_spine_pos).length
+
+        # =========================================================================
+        # STEP 1: CREATE VERTICAL CYLINDER (MAIN BODY) - APPLY Y-SQUISH TO MATCH SHOULDER DIAMETER
+        # =========================================================================
+        script_log("DEBUG: Creating vertical cylinder for coat body...")
+
+        # Position cylinder centered at shoulders, extending downward
+        vertical_center = shoulder_center + Vector((0, 0, -coat_height / 2))
+
+        bpy.ops.mesh.primitive_cylinder_add(
+            vertices=radial_segments,
+            depth=coat_height,
+            radius=torso_radius,  # Starts with torso_radius = 0.25 from config
+            location=vertical_center
+        )
+        vertical_cylinder = bpy.context.active_object
+        vertical_cylinder.name = f"{figure_name}_Coat_Vertical"
+
+        # CALCULATE Y SCALE TO MATCH SHOULDER DIAMETER
+        y_scale_ratio = diameter_shoulder / (torso_radius * 2)
+
+        # Apply Y-squish: X=1.0, Y=calculated ratio, Z=1.0
+        vertical_cylinder.scale = (1.0, y_scale_ratio, 1.0)
+        script_log(
+            f"✓ Vertical cylinder Y-squish: torso_radius={torso_radius} → Y-scale={y_scale_ratio:.3f} to match diameter_shoulder={diameter_shoulder}")
+
+        # =========================================================================
+        # STEP 2: ADD VERTICAL SUBDIVISIONS FOR Z-AXIS FLEXIBILITY (PRESERVE SHAPE)
+        # =========================================================================
+        script_log("DEBUG: Adding vertical subdivisions for coat flexibility...")
+
+        # Get longitudinal segments from config
+        longitudinal_segments = garment_configs.get("longitudinal_segments", 24)
+        number_cuts = max(1, longitudinal_segments - 1)
+
+        script_log(f"DEBUG: Using {longitudinal_segments} longitudinal segments, adding {number_cuts} vertical cuts")
+
+        bpy.context.view_layer.objects.active = vertical_cylinder
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_mode(type='EDGE')
+
+        # Select all vertical edges
+        bpy.ops.mesh.select_all(action='DESELECT')
+
+        bm = bmesh.from_edit_mesh(vertical_cylinder.data)
+
+        for edge in bm.edges:
+            # Check if edge is approximately vertical (different Z coordinates)
+            if abs(edge.verts[0].co.z - edge.verts[1].co.z) > 0.01:
+                edge.select = True
+
+        # Subdivide only the selected vertical edges using config value
+        bpy.ops.mesh.subdivide(number_cuts=number_cuts, smoothness=0.0)
+
+        bpy.ops.object.mode_set(mode='OBJECT')
+        script_log(f"✓ Added {number_cuts} vertical subdivisions using longitudinal_segments={longitudinal_segments}")
+
+        # =========================================================================
+        # STEP 3: LONG COAT - QUARTER SEPARATION (FRONT SPLIT) AND DELETE BOTTOM FACE
+        # =========================================================================
+        if coat_length == "long":
+            script_log("DEBUG: Creating front split and deleting bottom face for long coat...")
+
+            # Get skirt_start_ratio from config with fallback
+            long_coat_settings = garment_configs.get("coat_length_settings", {}).get("long", {})
+            skirt_start_ratio = long_coat_settings.get("skirt_start_ratio", 0.6)
+
+            # Calculate skirt region dimensions (bottom portion of coat)
+            skirt_start_z = -coat_height * (1 - skirt_start_ratio)
+            split_depth = coat_height * 0.8
+            split_width = 0.05
+
+            script_log(f"DEBUG: Long coat skirt starts at {skirt_start_ratio * 100}% down (z={skirt_start_z:.3f})")
+
+            # Create split cutter object (thin vertical plane)
+            bpy.ops.mesh.primitive_plane_add(
+                size=split_depth,
+                location=vertical_center + Vector((0, 0, skirt_start_z))
+            )
+            split_cutter = bpy.context.active_object
+            split_cutter.name = f"{figure_name}_CoatSplit_Cutter"
+
+            # Scale cutter to be a thin vertical strip
+            split_cutter.scale = (1.0, split_width / split_depth, 1.0)
+            split_cutter.rotation_euler = (0, math.radians(90), 0)
+
+            # Position cutter at front center of coat
+            split_cutter.location.y = vertical_cylinder.location.y + diameter_shoulder * 0.5
+
+            # Add Boolean modifier to subtract split from coat
+            bool_split = vertical_cylinder.modifiers.new(name="Split_Front", type='BOOLEAN')
+            bool_split.operation = 'DIFFERENCE'
+            bool_split.object = split_cutter
+            bool_split.solver = 'FAST'
+
+            # Apply the Boolean subtraction
+            bpy.context.view_layer.objects.active = vertical_cylinder
+            bpy.ops.object.modifier_apply(modifier="Split_Front")
+
+            # Remove the cutter object
+            bpy.data.objects.remove(split_cutter, do_unlink=True)
+
+            script_log("✓ Created front split using Boolean subtraction in FAST mode")
+
+            # Delete bottom face
+            script_log("Finding and deleting bottom face of vertical cylinder...")
+            bpy.context.view_layer.objects.active = vertical_cylinder
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.mesh.select_mode(type='FACE')
+            bpy.ops.mesh.select_all(action='DESELECT')
+
+            bottom_z_threshold = shoulder_center.z - coat_height + 0.01
+
+            bm = bmesh.from_edit_mesh(vertical_cylinder.data)
+            bottom_faces = []
+
+            for face in bm.faces:
+                all_vertices_bottom = True
+                for vert in face.verts:
+                    world_pos = vertical_cylinder.matrix_world @ vert.co
+                    if abs(world_pos.z - bottom_z_threshold) > 0.02:
+                        all_vertices_bottom = False
+                        break
+
+                if all_vertices_bottom:
+                    bottom_faces.append(face)
+
+            if bottom_faces:
+                bmesh.ops.delete(bm, geom=bottom_faces, context='FACES')
+                script_log(f"Deleted {len(bottom_faces)} bottom face(s)")
+            else:
+                script_log("WARNING: No bottom face found to delete")
+
+            bmesh.update_edit_mesh(vertical_cylinder.data)
+            bpy.ops.object.mode_set(mode='OBJECT')
+
+        # =========================================================================
+        # STEP 4: CREATE HORIZONTAL CYLINDER (SHOULDERS/CHEST)
+        # =========================================================================
+        script_log(f"DEBUG: Creating horizontal cylinder for shoulders, width {shoulder_width}...")
+
+        # Position horizontal cylinder between shoulders
+        horizontal_center = shoulder_center
+        shoulder_vector = (right_shoulder_pos - left_shoulder_pos).normalized()
+
+        bpy.ops.mesh.primitive_cylinder_add(
+            vertices=radial_segments,
+            depth=shoulder_width,
+            radius=diameter_shoulder / 2.0,
+            location=horizontal_center
+        )
+        horizontal_cylinder = bpy.context.active_object
+        horizontal_cylinder.name = f"{figure_name}_Coat_Horizontal"
+
+        # Rotate to align with shoulder line
+        horizontal_cylinder.rotation_euler = shoulder_vector.to_track_quat('Z', 'Y').to_euler()
+
+        # =========================================================================
+        # STEP 5: COMBINE CYLINDERS WITH BOOLEAN UNION
+        # =========================================================================
+        script_log("DEBUG: Combining cylinders with boolean union...")
+
+        # Set vertical cylinder as main object
+        coat_obj = vertical_cylinder
+        coat_obj.name = f"{figure_name}_Coat"
+
+        # Add boolean modifier to combine with horizontal cylinder
+        boolean_mod = coat_obj.modifiers.new(name="Boolean_Union", type='BOOLEAN')
+        boolean_mod.operation = 'UNION'
+        boolean_mod.object = horizontal_cylinder
+
+        # Apply boolean modifier
+        bpy.context.view_layer.objects.active = coat_obj
+        bpy.ops.object.modifier_apply(modifier="Boolean_Union")
+
+        # Remove horizontal cylinder
+        bpy.data.objects.remove(horizontal_cylinder, do_unlink=True)
+
+        # =========================================================================
+        # STEP 6: SMOOTH ARMPIT AREAS
+        # =========================================================================
+        smooth_armpits = garment_configs.get("smooth_armpits", False)
+        if smooth_armpits:
+            script_log("DEBUG: Smoothing armpit areas...")
+
+            bpy.context.view_layer.objects.active = coat_obj
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.mesh.select_mode(type='VERT')
+
+            bm = bmesh.from_edit_mesh(coat_obj.data)
+
+            for vert in bm.verts:
+                vert_local = coat_obj.matrix_world.inverted() @ vert.co
+                if abs(vert_local.x) > torso_radius * 0.8 and vert_local.z > -0.1:
+                    vert.select = True
+
+            if any(v.select for v in bm.verts):
+                bpy.ops.mesh.vertices_smooth(factor=0.5, repeat=3)
+
+            bpy.ops.object.mode_set(mode='OBJECT')
+
+        # =========================================================================
+        # STEP 7: SETUP VERTEX GROUPS WITH XYZ EMPTIES FOR STRONG PINNING
+        # =========================================================================
+        script_log("DEBUG: Setting up coat vertex groups with XYZ empties for strong shoulder pinning...")
+
+        # Clear any existing parenting
+        coat_obj.parent = None
+
+        # Clear any existing vertex groups
+        for vg in list(coat_obj.vertex_groups):
+            coat_obj.vertex_groups.remove(vg)
+
+        # Remove any existing armature modifiers
+        for mod in list(coat_obj.modifiers):
+            if mod.type == 'ARMATURE':
+                coat_obj.modifiers.remove(mod)
+
+        # GET XYZ SHOULDER EMPTIES (NOT RPY EMPTIES)
+        left_shoulder_xyz_empty = bpy.data.objects.get("CTRL_LEFT_SHOULDER")
+        right_shoulder_xyz_empty = bpy.data.objects.get("CTRL_RIGHT_SHOULDER")
+
+        if not left_shoulder_xyz_empty or not right_shoulder_xyz_empty:
+            script_log("ERROR: Could not find XYZ shoulder empties for coat pinning")
+            return None
+
+        script_log(
+            f"✓ Using XYZ empties for shoulder pinning: {left_shoulder_xyz_empty.name}, {right_shoulder_xyz_empty.name}")
+
+        # Create vertex groups for XYZ empties
+        left_shoulder_group = coat_obj.vertex_groups.new(name="Left_Shoulder_XYZ")
+        right_shoulder_group = coat_obj.vertex_groups.new(name="Right_Shoulder_XYZ")
+
+        # Use larger influence radius for better stability
+        shoulder_influence_radius = diameter_shoulder * 1.5
+
+        # Apply strong pinning to shoulder areas
+        mesh = coat_obj.data
+        left_shoulder_pos = left_shoulder_xyz_empty.matrix_world.translation
+        right_shoulder_pos = right_shoulder_xyz_empty.matrix_world.translation
+
+        for vert in mesh.vertices:
+            vert_co = coat_obj.matrix_world @ vert.co
+            vert_height = vert_co.z - shoulder_center.z
+
+            # LEFT SHOULDER - STRONG PINNING
+            dist_to_left = (vert_co - left_shoulder_pos).length
+            if dist_to_left <= shoulder_influence_radius:
+                # Strong quadratic falloff for firm pinning
+                weight = 1.0 - (dist_to_left / shoulder_influence_radius)
+                weight = weight * weight  # Quadratic falloff
+
+                # Height-based attenuation - only pin upper areas
+                height_factor = max(0.0, 1.0 - (abs(vert_height) / (coat_height * 0.2)))
+                final_weight = weight * height_factor
+
+                if final_weight > 0.1:  # Higher threshold for strong pinning
+                    left_shoulder_group.add([vert.index], final_weight, 'REPLACE')
+
+            # RIGHT SHOULDER - STRONG PINNING
+            dist_to_right = (vert_co - right_shoulder_pos).length
+            if dist_to_right <= shoulder_influence_radius:
+                # Strong quadratic falloff for firm pinning
+                weight = 1.0 - (dist_to_right / shoulder_influence_radius)
+                weight = weight * weight  # Quadratic falloff
+
+                # Height-based attenuation - only pin upper areas
+                height_factor = max(0.0, 1.0 - (abs(vert_height) / (coat_height * 0.2)))
+                final_weight = weight * height_factor
+
+                if final_weight > 0.1:  # Higher threshold for strong pinning
+                    right_shoulder_group.add([vert.index], final_weight, 'REPLACE')
+
+        # Create combined pinning group for cloth simulation
+        combined_anchors_group = coat_obj.vertex_groups.new(name="Coat_Combined_Anchors")
+
+        # Combine weights from both shoulder groups
+        for i in range(len(coat_obj.data.vertices)):
+            max_weight = 0.0
+            for group_name in ["Left_Shoulder_XYZ", "Right_Shoulder_XYZ"]:
+                group = coat_obj.vertex_groups.get(group_name)
+                if group:
+                    try:
+                        weight = group.weight(i)
+                        max_weight = max(max_weight, weight)
+                    except:
+                        pass
+
+            if max_weight > 0.1:
+                combined_anchors_group.add([i], max_weight, 'REPLACE')
+
+        # =========================================================================
+        # STEP 8: ADD SHRINKWRAP MODIFIER TO FOLLOW SHOULDER EMPTIES
+        # =========================================================================
+        script_log("DEBUG: Adding shrinkwrap modifier to follow shoulder empties...")
+
+        # Add shrinkwrap to left shoulder
+        left_shrinkwrap = coat_obj.modifiers.new(name="Shrinkwrap_Left_Shoulder", type='SHRINKWRAP')
+        left_shrinkwrap.target = left_shoulder_xyz_empty
+        left_shrinkwrap.wrap_method = 'NEAREST_VERTEX'
+        left_shrinkwrap.wrap_mode = 'OUTSIDE_SURFACE'
+        left_shrinkwrap.offset = 0.001
+        left_shrinkwrap.vertex_group = "Left_Shoulder_XYZ"
+        left_shrinkwrap.invert_vertex_group = False
+
+        # Add shrinkwrap to right shoulder
+        right_shrinkwrap = coat_obj.modifiers.new(name="Shrinkwrap_Right_Shoulder", type='SHRINKWRAP')
+        right_shrinkwrap.target = right_shoulder_xyz_empty
+        right_shrinkwrap.wrap_method = 'NEAREST_VERTEX'
+        right_shrinkwrap.wrap_mode = 'OUTSIDE_SURFACE'
+        right_shrinkwrap.offset = 0.001
+        right_shrinkwrap.vertex_group = "Right_Shoulder_XYZ"
+        right_shrinkwrap.invert_vertex_group = False
+
+        script_log("✓ Added shrinkwrap modifiers to follow shoulder empties")
+
+        # =========================================================================
+        # STEP 9: ADD CLOTH SIMULATION WITH STRONG PINNING
+        # =========================================================================
+        script_log("DEBUG: Adding cloth simulation with strong shoulder pinning...")
+        cloth_config = garment_configs.get("cloth_settings", {})
+
+        if cloth_config.get("enabled", True):
+            cloth_mod = coat_obj.modifiers.new(name="Cloth", type='CLOTH')
+
+            # Apply cloth settings from config
+            cloth_mod.settings.quality = cloth_config.get("quality", 12)
+            cloth_mod.settings.mass = cloth_config.get("mass", 0.3)
+            cloth_mod.settings.tension_stiffness = cloth_config.get("tension_stiffness", 8.0)
+            cloth_mod.settings.compression_stiffness = cloth_config.get("compression_stiffness", 7.0)
+            cloth_mod.settings.shear_stiffness = cloth_config.get("shear_stiffness", 5.0)
+            cloth_mod.settings.bending_stiffness = cloth_config.get("bending_stiffness", 0.8)
+            cloth_mod.settings.air_damping = cloth_config.get("air_damping", 0.8)
+            cloth_mod.settings.time_scale = cloth_config.get("time_scale", 1.0)
+
+            # COLLISIONS
+            cloth_mod.collision_settings.use_collision = True
+            cloth_mod.collision_settings.collision_quality = cloth_config.get("collision_quality", 6)
+            cloth_mod.collision_settings.distance_min = cloth_config.get("external_distance_min", 0.005)
+
+            # Self-collision
+            cloth_mod.collision_settings.use_self_collision = True
+            cloth_mod.collision_settings.self_distance_min = cloth_config.get("self_distance_min", 0.002)
+
+            # PIN COAT TO SHOULDERS USING XYZ EMPTIES
+            cloth_mod.settings.vertex_group_mass = "Coat_Combined_Anchors"
+
+            script_log("✓ Coat cloth: STRONG shoulder pinning using XYZ empties + shrinkwrap")
+        else:
+            script_log("DEBUG: Cloth simulation disabled for coat")
+
+        # =========================================================================
+        # STEP 10: ADD MATERIALS
+        # =========================================================================
+        script_log("DEBUG: Adding coat materials...")
+
+        apply_material_from_config(coat_obj, "coat_torso", material_name="Coat_Material",
+                                   fallback_color=(0.1, 0.3, 0.8, 1.0))
+
+        # =========================================================================
+        # STEP 11: SET MODIFIER ORDER (CRITICAL!)
+        # =========================================================================
+        script_log("DEBUG: Setting modifier order...")
+
+        bpy.context.view_layer.objects.active = coat_obj
+        modifiers = coat_obj.modifiers
+
+        # Build correct order: Shrinkwrap first, then Cloth
+        correct_order = ["Shrinkwrap_Left_Shoulder", "Shrinkwrap_Right_Shoulder"]
+        if cloth_config.get("enabled", True):
+            correct_order.append("Cloth")
+
+        for mod_name in correct_order:
+            mod_index = modifiers.find(mod_name)
+            if mod_index >= 0:
+                while mod_index > correct_order.index(mod_name):
+                    bpy.ops.object.modifier_move_up(modifier=mod_name)
+                    mod_index -= 1
+
+        script_log("✓ Modifier order: Shrinkwrap → Cloth")
+
+        # =========================================================================
+        # STEP 8: ADD ARMATURE MODIFIER
+        # =========================================================================
+        # script_log("DEBUG: Adding armature modifier...")
+
+        # armature_mod = coat_obj.modifiers.new(name="Armature", type='ARMATURE')
+        # armature_mod.object = armature_obj
+        # armature_mod.use_vertex_groups = True
+
+        # =========================================================================
+        # STEP 9: ADD CLOTH SIMULATION WITH STRONG PINNING
+        # =========================================================================
+        script_log("DEBUG: Adding cloth simulation with strong shoulder pinning...")
+
+        # FIX: Get cloth settings from the correct nested structure
+        coat_config = garment_configs.get("coat_torso", {})
+        cloth_config = coat_config.get("cloth_settings", {})
+
+        if cloth_config.get("enabled", True):
+            script_log("DEBUG: Creating cloth modifier...")
+
+            # Create the modifier (may return None in some Blender versions)
+            coat_obj.modifiers.new(name="Cloth", type='CLOTH')
+
+            # Get the modifier we just created
+            cloth_mod = coat_obj.modifiers.get("Cloth")
+
+            if cloth_mod is None:
+                script_log("ERROR: Could not find Cloth modifier after creation")
+                return None
+
+            script_log(f"DEBUG: Successfully retrieved cloth_mod: {cloth_mod.name}")
+
+            # Apply cloth settings from config
+            cloth_mod.settings.quality = cloth_config.get("quality", 12)
+            cloth_mod.settings.mass = cloth_config.get("mass", 0.3)
+            cloth_mod.settings.tension_stiffness = cloth_config.get("tension_stiffness", 8.0)
+            cloth_mod.settings.compression_stiffness = cloth_config.get("compression_stiffness", 6.0)
+            cloth_mod.settings.shear_stiffness = cloth_config.get("shear_stiffness", 5.0)
+            cloth_mod.settings.bending_stiffness = cloth_config.get("bending_stiffness", 0.8)
+            cloth_mod.settings.air_damping = cloth_config.get("air_damping", 0.5)
+            cloth_mod.settings.time_scale = cloth_config.get("time_scale", 1.0)
+
+            # COLLISIONS
+            cloth_mod.collision_settings.use_collision = True
+            cloth_mod.collision_settings.collision_quality = cloth_config.get("collision_quality", 8)
+            cloth_mod.collision_settings.distance_min = cloth_config.get("external_distance_min", 0.005)
+
+            # Self-collision
+            cloth_mod.collision_settings.use_self_collision = True
+            cloth_mod.collision_settings.self_distance_min = cloth_config.get("self_distance_min", 0.002)
+
+            # PIN COAT TO SHOULDERS USING XYZ EMPTIES
+            cloth_mod.settings.vertex_group_mass = "Coat_Combined_Anchors"
+
+            script_log("✓ Coat cloth: STRONG shoulder pinning using XYZ empties + shrinkwrap")
+        else:
+            script_log("DEBUG: Cloth simulation disabled for coat")
+
+        # =========================================================================
+        # STEP 10: ADD MATERIALS
+        # =========================================================================
+        script_log("DEBUG: Adding coat materials...")
+
+        apply_material_from_config(coat_obj, "coat_torso", material_name="Coat_Material",
+                                   fallback_color=(0.1, 0.3, 0.8, 1.0))
+
+        # =========================================================================
+        # STEP 11: SET MODIFIER ORDER
+        # =========================================================================
+        script_log("DEBUG: Setting modifier order...")
+
+        bpy.context.view_layer.objects.active = coat_obj
+        modifiers = coat_obj.modifiers
+
+        # Remove Subdivision modifier if it exists
+        if "Subdivision" in modifiers:
+            modifiers.remove(modifiers["Subdivision"])
+            script_log("✓ Removed Subdivision modifier")
+
+        # Build correct order
+        correct_order = ["Armature"]
+        if cloth_config.get("enabled", True):
+            correct_order.append("Cloth")
+
+        for mod_name in correct_order:
+            mod_index = modifiers.find(mod_name)
+            if mod_index >= 0:
+                while mod_index > correct_order.index(mod_name):
+                    bpy.ops.object.modifier_move_up(modifier=mod_name)
+                    mod_index -= 1
+
+        # =========================================================================
+        # STEP 12: FINAL VERIFICATION
+        # =========================================================================
+        bpy.context.view_layer.update()
+
+        script_log(f"=== COAT TORSO CREATION COMPLETE ===")
+        script_log(f"✓ Coat type: {coat_length}")
+        script_log(f"✓ Height: {coat_height:.3f}")
+        script_log(f"✓ Shoulder width: {shoulder_width:.3f}")
+        script_log(f"✓ Using XYZ empties for strong shoulder pinning")
+        script_log(f"✓ Shoulder influence radius: {shoulder_influence_radius:.3f}")
+        script_log(f"✓ Cloth simulation: {'ENABLED' if cloth_config.get('enabled', True) else 'DISABLED'}")
+
+        return coat_obj
+
+    except Exception as e:
+        script_log(f"ERROR creating coat: {e}")
         import traceback
         script_log(f"Traceback: {traceback.format_exc()}")
         bpy.ops.object.mode_set(mode='OBJECT')
