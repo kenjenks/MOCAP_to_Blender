@@ -3482,6 +3482,7 @@ def setup_pants_component_vertex_groups(obj, control_point_name, armature_obj):
     rpy_empty = joint_control_systems.get(control_point_name, {}).get('rpy_empty')
     if rpy_empty:
         obj.parent = rpy_empty
+        obj.location = (0, 0, 0) # Reset local position to follow parent
         script_log(f"✓ {obj.name} parented to {rpy_empty.name} for position+rotation")
 
     # Create vertex group for deformation (optional - for cloth simulation)
