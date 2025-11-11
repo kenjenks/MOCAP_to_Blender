@@ -4201,7 +4201,7 @@ def create_coat(armature_obj, figure_name):
         script_log(f"⚠ Could not load shoulder diameter from config, using fallback: {diameter_shoulder}")
 
     script_log(f"DEBUG: Coat - Length: {coat_length}, Radial segments: {radial_segments}")
-    script_log(f"DEBUG: Coat - Longitudinal segments: {longitudinal_segments}, Height: {coat_height}")
+    script_log(f"DEBUG: Coat - Longitudinal segments: {longitudinal_segments}")
     script_log(
         f"DEBUG: Coat - Torso radius: {torso_radius}, Shoulder diameter: {diameter_shoulder}, Puffiness: {puffiness}")
 
@@ -4215,6 +4215,15 @@ def create_coat(armature_obj, figure_name):
         right_shoulder_bone = armature_obj.pose.bones.get("DEF_RightShoulder")
         neck_bone = armature_obj.pose.bones.get("DEF_Neck")
         upper_spine_bone = armature_obj.pose.bones.get("DEF_UpperSpine")
+
+        # Get joint control systems for hips. Will be reused in 8.5
+        left_hip_control_name = "CTRL_LEFT_HIP"
+        left_hip_control = joint_control_systems.get(left_hip_control_name, {})
+        left_hip_xyz_empty = left_hip_control.get('xyz_empty')
+
+        right_hip_control_name = "CTRL_RIGHT_HIP"
+        right_hip_control = joint_control_systems.get(right_hip_control_name, {})
+        right_hip_xyz_empty = right_hip_control.get('xyz_empty')
 
         bpy.ops.object.mode_set(mode='OBJECT')
 
@@ -4231,6 +4240,18 @@ def create_coat(armature_obj, figure_name):
         shoulder_width = (right_shoulder_pos - left_shoulder_pos).length
         shoulder_center = (left_shoulder_pos + right_shoulder_pos) / 2
         spine_to_shoulder = (shoulder_center - upper_spine_pos).length
+
+        shoulder_height = shoulder_center.z
+        hip_height = (left_hip_xyz_empty.matrix_world.translation.z + right_hip_xyz_empty.matrix_world.translation.z) / 2
+        shoulder_to_hip_distance = shoulder_height - hip_height
+
+        length_settings = garment_configs.get("coat_length_settings", {})
+        if coat_length == "short":
+            length_factor = length_settings.get("short", {}).get("length_factor", 1.1)
+        else:  # long coat
+            length_factor = length_settings.get("long", {}).get("length_factor", 1.5)
+
+        coat_height = shoulder_to_hip_distance * length_factor
 
         # =========================================================================
         # STEP 1: CREATE VERTICAL CYLINDER (MAIN BODY) - APPLY Y-SQUISH TO MATCH SHOULDER DIAMETER
@@ -4655,29 +4676,6 @@ def create_coat(armature_obj, figure_name):
         if coat_length == "short" and False:
             script_log("DEBUG: Setting up hip pinning for short coats...")
 
-            # Get hip control names
-            left_hip_control_name = "CTRL_LEFT_HIP"
-            right_hip_control_name = "CTRL_RIGHT_HIP"
-
-            # Get joint control systems for hips
-            left_hip_control = joint_control_systems.get(left_hip_control_name, {})
-            right_hip_control = joint_control_systems.get(right_hip_control_name, {})
-
-            if not all([left_hip_control, right_hip_control]):
-                script_log("Warning: Missing joint control systems for coat hips")
-                # Fallback: try to get XYZ empties directly using correct naming pattern
-                left_hip_xyz_empty = bpy.data.objects.get(f"XYZ_{left_hip_control_name}")
-                right_hip_xyz_empty = bpy.data.objects.get(f"XYZ_{right_hip_control_name}")
-
-                if not left_hip_xyz_empty:
-                    script_log(f"ERROR: Could not find XYZ empty: XYZ_{left_hip_control_name}")
-                if not right_hip_xyz_empty:
-                    script_log(f"ERROR: Could not find XYZ empty: XYZ_{right_hip_control_name}")
-            else:
-                # Use XYZ empties (these are the actual empties that follow control points)
-                left_hip_xyz_empty = left_hip_control.get('xyz_empty')
-                right_hip_xyz_empty = right_hip_control.get('xyz_empty')
-
             if left_hip_xyz_empty and right_hip_xyz_empty:
                 script_log(f"✓ Using hip XYZ empties: {left_hip_xyz_empty.name}, {right_hip_xyz_empty.name}")
 
@@ -4690,6 +4688,10 @@ def create_coat(armature_obj, figure_name):
                 hip_radius = base_radii.get("hip", 0.09)  # 9cm radius from config
                 hip_diameter = hip_radius * 2  # 18cm diameter
                 hip_influence_radius = hip_diameter * 1.2  # 21.6cm influence radius
+
+                # INITIALIZE THE LISTS HERE
+                left_hip_vertices = []
+                right_hip_vertices = []
 
                 for vert in coat_obj.data.vertices:
                     vert_co = coat_obj.matrix_world @ vert.co
