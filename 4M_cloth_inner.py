@@ -7,7 +7,7 @@ import os
 import argparse
 import json
 import math
-from mathutils import Vector, Matrix
+from mathutils import Vector, Matrix, Quaternion
 
 ##########################################################################################
 
@@ -60,7 +60,8 @@ def main_execution():
         register_driver_functions()
         load_garment_configs()  # Load configurations into global garment_configs
         populate_joint_control_systems()
-        make_vertex_all_bundles(armature_obj)  # Then: Create bundle systems
+        make_vertex_all_bundles(armature_obj)
+        verify_rpy_empty_parenting()
         garments_created = create_cloth_garments(armature_obj, figure_name)
 
         # 8. Force initial constraint solve
@@ -306,6 +307,8 @@ def create_empty_at_location(name, location=(0,0,0), size=0.1, empty_type='PLAIN
     empty_data.empty_display_type = empty_type
     bpy.context.collection.objects.link(empty_data)
     empty_data.location = location
+    bpy.context.view_layer.update()
+    script_log(f"DEBUG: Empty '{name}' actual location after creation: {empty_data.location}")
     return empty_data
 
 ##########################################################################################
@@ -357,12 +360,13 @@ def populate_joint_control_systems():
             joint_control_systems[cp_name] = {
                 "radius": cp_data["radius"],
                 "type": cp_data["type"],
-                "rpy_empty": cp_obj,  # Reference to the actual control point object
+                "xyz_empty": None,
+                "rpy_empty": None,
                 "location": cp_obj.location
             }
             script_log(f"✓ Registered {cp_name} in joint_control_systems")
         else:
-            script_log(f"⚠ WARNING: Control point {cp_name} not found in scene")
+            script_log(f"ERROR: Control point {cp_name} not found in scene")
 
     script_log(f"✓ Populated {len(joint_control_systems)} control points in joint_control_systems")
 
@@ -3282,40 +3286,118 @@ def create_boot(armature_obj, figure_name, garment_config, global_cloth_settings
 
 ##########################################################################################
 
-def parent_and_align_cylinder(cylinder_obj, parent_empty, start_global, end_global):
-    """
-    Parent a cylinder to an empty and align it between two global positions
-    """
-    if not parent_empty:
-        return False
+def debug_cylinder_orientation(cylinder, start_empty, end_empty):
+    """Debug the cylinder's orientation issues"""
+    script_log(f"=== DEBUG CYLINDER: {cylinder.name} ===")
 
-    # Parent the cylinder
-    cylinder_obj.parent = parent_empty
+    # Check local axes
+    world_matrix = cylinder.matrix_world
+    local_z = world_matrix @ Vector((0, 0, 1)) - world_matrix.translation
+    local_y = world_matrix @ Vector((0, 1, 0)) - world_matrix.translation
+    local_x = world_matrix @ Vector((1, 0, 0)) - world_matrix.translation
 
-    # Calculate cylinder properties in global space
-    cylinder_direction = end_global - start_global
-    cylinder_length = cylinder_direction.length
-    cylinder_center_global = start_global + (cylinder_direction / 2)
+    script_log(f"Local Z axis (should point to end): {local_z.normalized()}")
+    script_log(f"Actual direction to end: {(end_empty.location - cylinder.location).normalized()}")
+    script_log(
+        f"Dot product (should be ~1.0): {local_z.normalized().dot((end_empty.location - cylinder.location).normalized())}")
 
-    # Convert cylinder center to local space relative to parent
-    parent_matrix = parent_empty.matrix_world
-    cylinder_center_local = parent_matrix.inverted() @ cylinder_center_global
+    # Check parenting
+    if cylinder.parent:
+        script_log(f"Parent: {cylinder.parent.name}")
+        script_log(f"Inherit Rotation: {getattr(cylinder, 'use_inherit_rotation', 'N/A')}")
 
-    # Position cylinder in local space
-    cylinder_obj.location = cylinder_center_local
+    script_log("=== END DEBUG ===")
 
-    # Calculate rotation to align cylinder with start→end direction
-    up_vector = Vector((0, 0, 1))
-    if cylinder_direction.length > 0.001:
-        cylinder_direction.normalize()
-        rotation_quat = up_vector.rotation_difference(cylinder_direction)
 
-        # Convert rotation to local space
-        cylinder_obj.rotation_mode = 'QUATERNION'
-        local_rotation = parent_matrix.inverted().to_3x3() @ rotation_quat.to_matrix()
-        cylinder_obj.rotation_quaternion = local_rotation.to_quaternion()
+def create_stretchable_cylinder(name, start_diameter, end_diameter, segments, start_empty, end_empty):
+    """Create stretchable cylinder with top fixed at start_rpy and bottom extending to end_rpy"""
 
-    return True
+    if not start_empty or not end_empty:
+        script_log(f"ERROR: Missing empties for stretchable cylinder {name}")
+        return None
+
+    # Calculate positions and initial distance
+    start_pos = start_empty.matrix_world.translation
+    end_pos = end_empty.matrix_world.translation
+    initial_distance = (end_pos - start_pos).length
+
+    script_log(f"DEBUG {name}: Start: {start_pos}, End: {end_pos}, Initial distance: {initial_distance}")
+
+    # Create cylinder at START position with initial proper length
+    bpy.ops.mesh.primitive_cylinder_add(
+        vertices=segments,
+        depth=initial_distance,
+        radius=start_diameter / 2.0,
+        location=start_pos
+    )
+
+    cylinder = bpy.context.active_object
+    cylinder.name = name
+
+    # Move the cylinder's origin to the TOP (start_rpy position)
+    # This ensures scaling happens from the top, keeping it fixed
+    bpy.context.view_layer.objects.active = cylinder
+    bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='MEDIAN')
+
+    # In edit mode, move all vertices down so the top stays at origin
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.transform.translate(value=(0, 0, initial_distance / 2))  # Your corrected sign
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # Parent to RPY empty
+    cylinder.parent = start_empty
+    cylinder.location = (0, 0, 0)  # Fixed at start_rpy
+
+    # SIMPLER driver using single distance variable
+    driver = cylinder.driver_add('scale', 2).driver  # Z scale
+    driver.type = 'SCRIPTED'
+
+    # Use the built-in distance calculation
+    var_distance = driver.variables.new()
+    var_distance.name = "distance"
+    var_distance.type = 'LOC_DIFF'  # This calculates distance between two objects
+    var_distance.targets[0].id = start_empty
+    var_distance.targets[1].id = end_empty
+
+    # Scale by current distance divided by initial distance
+    driver.expression = f"distance / {initial_distance}"
+
+    # Apply taper - need to adjust since origin is now at top
+    if abs(start_diameter - end_diameter) > 0.001:
+        taper_factor = end_diameter / start_diameter
+        taper_modifier = cylinder.modifiers.new(name="Taper", type='SIMPLE_DEFORM')
+        taper_modifier.deform_method = 'TAPER'
+        taper_modifier.factor = taper_factor - 1.0
+        taper_modifier.deform_axis = 'Z'
+        # Taper modifier works from origin, so with origin at top this should work correctly
+
+    # DEBUG: Check the setup
+    script_log(f"DEBUG {name}: Driver expression: {driver.expression}")
+
+    # Force update and check
+    bpy.context.view_layer.update()
+
+    # Manual verification
+    current_start = start_empty.matrix_world.translation
+    current_end = end_empty.matrix_world.translation
+    current_distance = (current_end - current_start).length
+    current_scale = cylinder.scale.z
+
+    script_log(f"DEBUG {name}: Manual check:")
+    script_log(f"  Current distance: {current_distance}")
+    script_log(f"  Current scale: {current_scale}")
+    script_log(f"  Expected scale: {current_distance / initial_distance}")
+
+    # Check top position
+    top_vertex_world = cylinder.matrix_world @ cylinder.data.vertices[0].co
+    script_log(f"  Top vertex world position: {top_vertex_world}")
+    script_log(f"  Start empty world position: {current_start}")
+    script_log(f"  Top position matches start: {(top_vertex_world - current_start).length < 0.001}")
+
+    debug_cylinder_orientation(cylinder, start_empty, end_empty)
+
+    return cylinder
 
 ##########################################################################################
 
@@ -3345,91 +3427,29 @@ def create_pants(armature_obj, figure_name, side="left"):
         return None
 
     # Use VB empties (these are the actual empties that follow control points)
-    hip_vb_empty = hip_control.get('rpy_empty')  # Use RPY empty for constraints
+    hip_vb_empty = hip_control.get('rpy_empty')
     knee_vb_empty = knee_control.get('rpy_empty')
     heel_vb_empty = heel_control.get('rpy_empty')
 
     if not all([hip_vb_empty, knee_vb_empty, heel_vb_empty]):
-        script_log(f"Warning: Missing RPY empties for {side} pants")
+        script_log(f"ERROR: Missing RPY empties for {side} pants")
         return None
-
-    # =========================================================================
-    # ADD Z-AXIS POINTING CONSTRAINTS TO RPY EMPTIES
-    # =========================================================================
-    script_log(f"DEBUG: Setting up Z-axis pointing constraints for {side} leg...")
-
-    # HIP RPY empty: Z-axis points to elbow
-    elbow_control_point = f"CTRL_{side_upper}_ELBOW"
-    elbow_target = bpy.data.objects.get(elbow_control_point)
-    if hip_vb_empty and elbow_target:
-        # Clear existing constraints first
-        for constraint in list(hip_vb_empty.constraints):
-            hip_vb_empty.constraints.remove(constraint)
-
-        # Add Damped Track constraint to point Z-axis toward elbow
-        track_constraint = hip_vb_empty.constraints.new('DAMPED_TRACK')
-        track_constraint.name = f"Track_To_Elbow"
-        track_constraint.target = elbow_target
-        track_constraint.track_axis = 'TRACK_Z'  # Z-axis points to target
-        script_log(f"✓ {hip_vb_empty.name} Z-axis tracking {elbow_control_point}")
-
-    # KNEE RPY empty: Z-axis points to wrist
-    wrist_control_point = f"CTRL_{side_upper}_WRIST"
-    wrist_target = bpy.data.objects.get(wrist_control_point)
-    if knee_vb_empty and wrist_target:
-        # Clear existing constraints first
-        for constraint in list(knee_vb_empty.constraints):
-            knee_vb_empty.constraints.remove(constraint)
-
-        # Add Damped Track constraint to point Z-axis toward wrist
-        track_constraint = knee_vb_empty.constraints.new('DAMPED_TRACK')
-        track_constraint.name = f"Track_To_Wrist"
-        track_constraint.target = wrist_target
-        track_constraint.track_axis = 'TRACK_Z'  # Z-axis points to target
-        script_log(f"✓ {knee_vb_empty.name} Z-axis tracking {wrist_control_point}")
-
-    # WRIST RPY empty: Z-axis points to index finger
-    index_control_point = f"CTRL_{side_upper}_INDEX"
-    index_target = bpy.data.objects.get(index_control_point)
-    if wrist_target and index_target:  # Note: using wrist_target from above
-        wrist_rpy_empty = joint_control_systems.get(wrist_control_point, {}).get('rpy_empty')
-        if wrist_rpy_empty:
-            # Clear existing constraints first
-            for constraint in list(wrist_rpy_empty.constraints):
-                wrist_rpy_empty.constraints.remove(constraint)
-
-            # Add Damped Track constraint to point Z-axis toward index finger
-            track_constraint = wrist_rpy_empty.constraints.new('DAMPED_TRACK')
-            track_constraint.name = f"Track_To_Index"
-            track_constraint.target = index_target
-            track_constraint.track_axis = 'TRACK_Z'  # Z-axis points to target
-            script_log(f"✓ {wrist_rpy_empty.name} Z-axis tracking {index_control_point}")
-    else:
-        script_log(f"⚠ Index control point {index_control_point} not found, wrist rotation will be neutral")
-
-    # Get correct bone names
-    if side == "left":
-        thigh_bone_name = "DEF_LeftThigh"
-        shin_bone_name = "DEF_LeftShin"
-    else:
-        thigh_bone_name = "DEF_RightThigh"
-        shin_bone_name = "DEF_RightShin"
 
     # Store created objects
     pants_objects = []
 
     # =========================================================================
-    # CREATE SPHERES WITH PROPER VERTEX GROUP SETUP (NOT DIRECT PARENTING)
+    # CREATE SPHERES
     # =========================================================================
     script_log(f"Creating hip sphere for {side} pants...")
     hip_sphere = create_sphere(
         name=f"{figure_name}_{side}_pants_hip_sphere",
         diameter=diameter_hip,
         segments=segments,
-        location=hip_vb_empty.location  # Use RPY empty's actual location
+        location=(0, 0, 0)
     )
-    # DO NOT PARENT DIRECTLY - use vertex groups and armature modifier
-    setup_pants_component_vertex_groups(hip_sphere, hip_control_name, armature_obj)
+    hip_sphere.parent = hip_vb_empty
+    setup_joint_sphere_empties(hip_sphere, hip_control_name, armature_obj)
     apply_material_from_config(hip_sphere, f"{side}_pants")
     pants_objects.append(hip_sphere)
     script_log(f"Created hip sphere at {hip_vb_empty.location}")
@@ -3440,9 +3460,10 @@ def create_pants(armature_obj, figure_name, side="left"):
         name=f"{figure_name}_{side}_pants_knee_sphere",
         diameter=diameter_knee,
         segments=segments,
-        location=knee_vb_empty.location  # Use RPY empty's actual location
+        location=(0, 0, 0)
     )
-    setup_pants_component_vertex_groups(knee_sphere, knee_control_name, armature_obj)
+    knee_sphere.parent = knee_vb_empty
+    setup_joint_sphere_empties(knee_sphere, knee_control_name, armature_obj)
     apply_material_from_config(knee_sphere, f"{side}_pants")
     pants_objects.append(knee_sphere)
     script_log(f"Created knee sphere at {knee_vb_empty.location}")
@@ -3453,71 +3474,52 @@ def create_pants(armature_obj, figure_name, side="left"):
         name=f"{figure_name}_{side}_pants_ankle_sphere",
         diameter=diameter_ankle,
         segments=segments,
-        location=heel_vb_empty.location  # Use RPY empty's actual location
+        location=(0, 0, 0)
     )
-    setup_pants_component_vertex_groups(ankle_sphere, heel_control_name, armature_obj)
+    ankle_sphere.parent = heel_vb_empty
+    setup_joint_sphere_empties(ankle_sphere, heel_control_name, armature_obj)
     apply_material_from_config(ankle_sphere, f"{side}_pants")
     pants_objects.append(ankle_sphere)
     script_log(f"Created ankle sphere at {heel_vb_empty.location}")
 
     # =========================================================================
-    # CREATE CYLINDERS WITH PROPER VERTEX GROUP SETUP
+    # CREATE CYLINDERS WITH PROPER STRETCH-TO BEHAVIOR
     # =========================================================================
     script_log(f"Creating thigh cylinder for {side} pants...")
-    thigh_cylinder = create_tapered_cylinder(
+
+    # Create cylinder that will stretch from hip to knee
+    thigh_cylinder = create_stretchable_cylinder(
         name=f"{figure_name}_{side}_pants_thigh_cylinder",
         start_diameter=diameter_hip,
         end_diameter=diameter_knee,
         segments=segments,
-        start_location=hip_vb_empty.location,  # TOP at hips
-        end_location=knee_vb_empty.location  # BOTTOM at knees
+        start_empty=hip_vb_empty,
+        end_empty=knee_vb_empty
     )
-
-    if hip_vb_empty:
-        success = parent_and_align_cylinder(
-            thigh_cylinder,
-            hip_vb_empty,
-            hip_vb_empty.location,  # start (hip)
-            knee_vb_empty.location  # end (knee)
-        )
-        if success:
-            script_log(f"✓ {thigh_cylinder.name} parented and aligned from hip to knee")
-        else:
-            script_log(f"ERROR: {thigh_cylinder.name} parenting failed")
 
     # Thigh cylinder spans from hip bone to upper leg bone
     hip_bone = "DEF_LeftHip" if side == "left" else "DEF_RightHip"
     thigh_bone = "DEF_LeftThigh" if side == "left" else "DEF_RightThigh"
-    setup_pants_cylinder_vertex_groups(thigh_cylinder, hip_bone, thigh_bone, armature_obj)
+    setup_pants_cylinder_vertex_groups(thigh_cylinder, hip_vb_empty, hip_bone, thigh_bone, armature_obj)
     apply_material_from_config(thigh_cylinder, f"{side}_pants")
     pants_objects.append(thigh_cylinder)
 
     script_log(f"Creating shin cylinder for {side} pants...")
-    shin_cylinder = create_tapered_cylinder(
+
+    # Create cylinder that will stretch from knee to ankle
+    shin_cylinder = create_stretchable_cylinder(
         name=f"{figure_name}_{side}_pants_shin_cylinder",
         start_diameter=diameter_knee,
         end_diameter=diameter_ankle,
         segments=segments,
-        start_location=knee_vb_empty.location,  # TOP at knees
-        end_location=heel_vb_empty.location  # BOTTOM at ankles
+        start_empty=knee_vb_empty,
+        end_empty=heel_vb_empty
     )
-
-    if knee_vb_empty:
-        success = parent_and_align_cylinder(
-            shin_cylinder,
-            knee_vb_empty,
-            knee_vb_empty.location,  # start (knee)
-            heel_vb_empty.location  # end (ankle)
-        )
-        if success:
-            script_log(f"✓ {shin_cylinder.name} parented and aligned from knee to ankle")
-        else:
-            script_log(f"ERROR: {shin_cylinder.name} parenting failed")
 
     # Shin cylinder spans from knee bone to ankle bone
     knee_bone = "DEF_LeftKnee" if side == "left" else "DEF_RightKnee"
     ankle_bone = "DEF_LeftAnkle" if side == "left" else "DEF_RightAnkle"
-    setup_pants_cylinder_vertex_groups(shin_cylinder, knee_bone, ankle_bone, armature_obj)
+    setup_pants_cylinder_vertex_groups(shin_cylinder, knee_vb_empty, knee_bone, ankle_bone, armature_obj)
     apply_material_from_config(shin_cylinder, f"{side}_pants")
     pants_objects.append(shin_cylinder)
 
@@ -3530,7 +3532,7 @@ def create_pants(armature_obj, figure_name, side="left"):
 
 ##########################################################################################
 
-def setup_pants_component_vertex_groups(obj, control_point_name, armature_obj):
+def setup_joint_sphere_empties(obj, control_point_name, armature_obj):
     """Setup vertex groups for pants spheres with TWO-EMPTIES PARENTING + armature deformation"""
     # Clear any existing vertex groups
     for vg in list(obj.vertex_groups):
@@ -3557,16 +3559,16 @@ def setup_pants_component_vertex_groups(obj, control_point_name, armature_obj):
         bone_group.add([i], 0.3, 'REPLACE')  # Light deformation weight
 
     # Add armature modifier for CLOTH DEFORMATION (not primary movement)
-    armature_mod = obj.modifiers.new(name="Armature", type='ARMATURE')
-    armature_mod.object = armature_obj
-    armature_mod.use_vertex_groups = True
+    # armature_mod = obj.modifiers.new(name="Armature", type='ARMATURE')
+    # armature_mod.object = armature_obj
+    # armature_mod.use_vertex_groups = True
 
     script_log(f"✓ {obj.name} uses two-empties parenting + light armature deformation")
 
 ##########################################################################################
 
-def setup_pants_cylinder_vertex_groups(obj, start_control_point, end_control_point, armature_obj):
-    """Setup vertex groups for pants cylinders with TWO-EMPTIES PARENTING + armature deformation"""
+def setup_pants_cylinder_vertex_groups(obj, rpy_empty, start_control_point, end_control_point, armature_obj):
+    """Setup vertex groups for pants cylinders with TRANSFORMED COORDINATES"""
     # Clear any existing vertex groups
     for vg in list(obj.vertex_groups):
         obj.vertex_groups.remove(vg)
@@ -3576,12 +3578,6 @@ def setup_pants_cylinder_vertex_groups(obj, start_control_point, end_control_poi
         if mod.type == 'ARMATURE':
             obj.modifiers.remove(mod)
 
-    # IMPORTANT: Parent to the START control point's RPY empty
-    start_rpy_empty = joint_control_systems.get(start_control_point, {}).get('rpy_empty')
-    if start_rpy_empty:
-        obj.parent = start_rpy_empty
-        script_log(f"✓ {obj.name} parented to {start_rpy_empty.name} for position+rotation")
-
     # Create vertex groups for deformation along the cylinder
     start_bone = "DEF_LeftThigh" if "LEFT" in start_control_point else "DEF_RightThigh"
     end_bone = "DEF_LeftShin" if "LEFT" in end_control_point else "DEF_RightShin"
@@ -3589,14 +3585,25 @@ def setup_pants_cylinder_vertex_groups(obj, start_control_point, end_control_poi
     start_bone_group = obj.vertex_groups.new(name=start_bone)
     end_bone_group = obj.vertex_groups.new(name=end_bone)
 
-    # Weight vertices based on position for deformation
-    local_z_coords = [v.co.z for v in obj.data.vertices]
+    # USE TRANSFORMED VERTEX POSITIONS IN LOCAL SPACE (after parenting/alignment)
+    local_z_coords = []
+    for vertex in obj.data.vertices:
+        # Get vertex position in object's local space (after all transforms)
+        local_pos = vertex.co
+        local_z_coords.append(local_pos.z)
+
     min_z = min(local_z_coords)
     max_z = max(local_z_coords)
     total_length = max_z - min_z
 
+    # Safety check for zero length
+    if abs(total_length) < 0.001:
+        script_log(f"⚠ WARNING: Cylinder {obj.name} has near-zero length after transforms")
+        total_length = 0.001  # Small epsilon to avoid division by zero
+
+    # Weight vertices based on TRANSFORMED position for deformation
     for i, vertex in enumerate(obj.data.vertices):
-        z_local = vertex.co.z
+        z_local = vertex.co.z  # This is now in transformed local space
         z_normalized = (z_local - min_z) / total_length
 
         start_weight = (1.0 - z_normalized) * 0.3  # Light deformation
@@ -3606,11 +3613,11 @@ def setup_pants_cylinder_vertex_groups(obj, start_control_point, end_control_poi
         end_bone_group.add([i], end_weight, 'REPLACE')
 
     # Add armature modifier for CLOTH DEFORMATION (not primary movement)
-    armature_mod = obj.modifiers.new(name="Armature", type='ARMATURE')
-    armature_mod.object = armature_obj
-    armature_mod.use_vertex_groups = True
+    # armature_mod = obj.modifiers.new(name="Armature", type='ARMATURE')
+    # armature_mod.object = armature_obj
+    # armature_mod.use_vertex_groups = True
 
-    script_log(f"✓ {obj.name} uses two-empties parenting + gradient armature deformation")
+    script_log(f"✓ {obj.name} uses transformed coordinates + gradient armature deformation")
 
 ##########################################################################################
 
@@ -5413,60 +5420,227 @@ def add_dynamic_weighting_to_garment(garment_obj, control_point_names, bone_name
     script_log(f"  - Control points: {control_point_names}")
     script_log(f"  - Bone groups: {bone_names}")
 
+##########################################################################################
 
+def setup_vb_empty_rotation_constraints():
+    """Setup rotation constraints for RPY empties in CORRECT hierarchy"""
+    script_log("=== SETTING UP RPY EMPTY ROTATION CONSTRAINTS ===")
+
+    # Left leg chain - RPY empties track next joint
+    setup_damped_track_rpy("CTRL_LEFT_HIP", "CTRL_LEFT_KNEE")
+    setup_damped_track_rpy("CTRL_LEFT_KNEE", "CTRL_LEFT_HEEL")
+    setup_damped_track_rpy("CTRL_LEFT_HEEL", "CTRL_LEFT_FOOT_INDEX")
+
+    # Right leg chain
+    setup_damped_track_rpy("CTRL_RIGHT_HIP", "CTRL_RIGHT_KNEE")
+    setup_damped_track_rpy("CTRL_RIGHT_KNEE", "CTRL_RIGHT_HEEL")
+    setup_damped_track_rpy("CTRL_RIGHT_HEEL", "CTRL_RIGHT_FOOT_INDEX")
+
+    # Left arm chain (for sleeves)
+    setup_damped_track_rpy("CTRL_LEFT_SHOULDER", "CTRL_LEFT_ELBOW")
+    setup_damped_track_rpy("CTRL_LEFT_ELBOW", "CTRL_LEFT_WRIST")
+    setup_damped_track_rpy("CTRL_LEFT_WRIST", "CTRL_LEFT_INDEX")
+
+    # Right arm chain (for sleeves)
+    setup_damped_track_rpy("CTRL_RIGHT_SHOULDER", "CTRL_RIGHT_ELBOW")
+    setup_damped_track_rpy("CTRL_RIGHT_ELBOW", "CTRL_RIGHT_WRIST")
+    setup_damped_track_rpy("CTRL_RIGHT_WRIST", "CTRL_RIGHT_INDEX")
+
+    script_log("✓ All RPY empty rotation constraints set up")
+
+##########################################################################################
+
+def setup_damped_track_rpy(control_point_name, target_control_point):
+    """Add damped track constraint to RPY empty to face next joint in chain"""
+    system_data = joint_control_systems.get(control_point_name)
+    if not system_data:
+        script_log(f"⚠ No joint system data for {control_point_name}")
+        return False
+
+    rpy_empty = system_data.get('rpy_empty')
+    target_obj = bpy.data.objects.get(target_control_point)
+
+    if rpy_empty and target_obj:
+        # Clear existing track constraints
+        for constraint in list(rpy_empty.constraints):
+            if constraint.type == 'DAMPED_TRACK':
+                rpy_empty.constraints.remove(constraint)
+
+        # Add damped track to make RPY face next joint
+        track_constraint = rpy_empty.constraints.new('DAMPED_TRACK')
+        track_constraint.name = f"Track_To_{target_control_point}"
+        track_constraint.target = target_obj
+        track_constraint.track_axis = 'TRACK_Z'  # Z-axis points toward target
+
+        script_log(f"✓ RPY_{control_point_name} tracking {target_control_point}")
+        return True
+    else:
+        script_log(f"⚠ Could not setup RPY tracking: {control_point_name} → {target_control_point}")
+        return False
+
+##########################################################################################
 def make_vertex_all_bundles(armature_obj):
-    """Create vertex bundle systems with two-empties architecture"""
-    global joint_control_systems
+    """Create all vertex bundle systems with PROPER ROTATION from the start"""
+    script_log("=== CREATING VERTEX BUNDLE SYSTEMS WITH PROPER ROTATION ===")
 
-    script_log("=== CREATING VERTEX BUNDLE SYSTEMS WITH DYNAMIC WEIGHTING ===")
+    # Clear any existing entries
+    joint_control_systems.clear()
 
-    # First, check if VB empties already exist
-    existing_vb_empties = {}
-    for cp_name in joint_control_systems.keys():
-        vb_name = f"VB_{cp_name}"
-        if vb_name in bpy.data.objects:
-            existing_vb_empties[cp_name] = bpy.data.objects[vb_name]
-            script_log(f"✓ Found existing VB empty: {vb_name}")
+    # Define limb chains with proper target directions
+    limb_chains = {
+        # Left leg
+        "CTRL_LEFT_HIP": "CTRL_LEFT_KNEE",
+        "CTRL_LEFT_KNEE": "CTRL_LEFT_HEEL",
+        # Right leg
+        "CTRL_RIGHT_HIP": "CTRL_RIGHT_KNEE",
+        "CTRL_RIGHT_KNEE": "CTRL_RIGHT_HEEL",
+        # Left arm
+        "CTRL_LEFT_SHOULDER": "CTRL_LEFT_ELBOW",
+        "CTRL_LEFT_ELBOW": "CTRL_LEFT_WRIST",
+        # Right arm
+        "CTRL_RIGHT_SHOULDER": "CTRL_RIGHT_ELBOW",
+        "CTRL_RIGHT_ELBOW": "CTRL_RIGHT_WRIST",
+    }
 
-    # Create missing VB empties with proper parenting and constraints
-    for cp_name, system_data in joint_control_systems.items():
-        vb_name = f"VB_{cp_name}"
-        rpy_empty = system_data['rpy_empty']
+    control_points_with_sides = [
+        # Shoulder control points
+        {"name": "CTRL_LEFT_SHOULDER", "side": "left", "target": "CTRL_LEFT_ELBOW"},
+        {"name": "CTRL_RIGHT_SHOULDER", "side": "right", "target": "CTRL_RIGHT_ELBOW"},
+        # Elbow control points
+        {"name": "CTRL_LEFT_ELBOW", "side": "left", "target": "CTRL_LEFT_WRIST"},
+        {"name": "CTRL_RIGHT_ELBOW", "side": "right", "target": "CTRL_RIGHT_WRIST"},
+        # Wrist control points
+        {"name": "CTRL_LEFT_WRIST", "side": "left", "target": "CTRL_LEFT_INDEX"},
+        {"name": "CTRL_RIGHT_WRIST", "side": "right", "target": "CTRL_RIGHT_INDEX"},
+        # Finger control points
+        {"name": "CTRL_LEFT_INDEX", "side": "left", "target": None},
+        {"name": "CTRL_RIGHT_INDEX", "side": "right", "target": None},
+        # Hip control points
+        {"name": "CTRL_LEFT_HIP", "side": "left", "target": "CTRL_LEFT_KNEE"},
+        {"name": "CTRL_RIGHT_HIP", "side": "right", "target": "CTRL_RIGHT_KNEE"},
+        # Knee control points
+        {"name": "CTRL_LEFT_KNEE", "side": "left", "target": "CTRL_LEFT_HEEL"},
+        {"name": "CTRL_RIGHT_KNEE", "side": "right", "target": "CTRL_RIGHT_HEEL"},
+        # Ankle/Heel control points
+        {"name": "CTRL_LEFT_HEEL", "side": "left", "target": "CTRL_LEFT_FOOT_INDEX"},
+        {"name": "CTRL_RIGHT_HEEL", "side": "right", "target": "CTRL_RIGHT_FOOT_INDEX"},
+        # Toe control points
+        {"name": "CTRL_LEFT_FOOT_INDEX", "side": "left", "target": None},
+        {"name": "CTRL_RIGHT_FOOT_INDEX", "side": "right", "target": None},
+        # Head control points (no specific direction)
+        {"name": "CTRL_HEAD_TOP", "side": "center", "target": None},
+        {"name": "CTRL_NOSE", "side": "center", "target": None},
+    ]
 
-        if cp_name in existing_vb_empties:
-            # Use existing VB empty
-            vb_empty = existing_vb_empties[cp_name]
-            script_log(f"✓ Using existing VB empty for {cp_name}")
-        else:
-            # Create new VB empty at the RPY empty's location
-            vb_empty = create_empty_at_location(vb_name, location=rpy_empty.location)
-            script_log(f"✓ Created dynamic vertex bundle empty for {cp_name}")
+    # Create two-empties system for each control point
+    for cp_data in control_points_with_sides:
+        cp_name = cp_data["name"]
+        side = cp_data["side"]
+        target_name = cp_data["target"]
 
-        # Parent VB empty to RPY empty
-        vb_empty.parent = rpy_empty
+        cp_obj = bpy.data.objects.get(cp_name)
+        if not cp_obj:
+            script_log(f"ERROR: Control point {cp_name} not found in scene")
+            continue
 
-        # Set local position to zero (align with parent)
-        vb_empty.location = (0, 0, 0)
+        # Create XYZ empty (position master) - PARENTED TO CONTROL POINT
+        xyz_empty = create_empty_at_location(
+            f"XYZ_{cp_name}",
+            location=(0, 0, 0),
+            size=0.05,
+            empty_type='PLAIN_AXES'
+        )
+        xyz_empty.parent = cp_obj
 
-        # CRITICAL: Add COPY_LOCATION constraint to follow parent
-        # Remove any existing COPY_LOCATION constraints first
-        for constraint in vb_empty.constraints:
-            if constraint.type == 'COPY_LOCATION':
-                vb_empty.constraints.remove(constraint)
+        # Calculate proper rotation for this joint
+        target_cp = bpy.data.objects.get(target_name) if target_name else None
+        proper_rotation = calculate_proper_rotation_for_joint(cp_obj, target_cp, cp_name)
 
-        copy_loc = vb_empty.constraints.new('COPY_LOCATION')
-        copy_loc.target = rpy_empty
-        copy_loc.use_x = True
-        copy_loc.use_y = True
-        copy_loc.use_z = True
+        # Apply rotation to XYZ empty
+        xyz_empty.rotation_mode = 'QUATERNION'
+        xyz_empty.rotation_quaternion = proper_rotation
 
-        # Store the VB empty in the system data for later use
-        system_data['vb_empty'] = vb_empty
+        # Create RPY empty (rotation master) - PARENTED TO XYZ EMPTY
+        rpy_empty = create_empty_at_location(
+            f"RPY_{cp_name}",
+            location=(0, 0, 0),
+            size=0.08,
+            empty_type='ARROWS'
+        )
+        rpy_empty.parent = xyz_empty
 
-        script_log(f"✓ Parented and constrained {vb_name} to {cp_name}")
+        # Store in joint_control_systems
+        joint_control_systems[cp_name] = {
+            'radius': get_bundle_radius_from_config(cp_name, side),
+            'xyz_empty': xyz_empty,
+            'rpy_empty': rpy_empty,
+            'location': cp_obj.location
+        }
 
-    script_log("✓ Vertex bundle systems created with proper parenting and constraints")
-    return joint_control_systems
+        script_log(f"✓ Created properly rotated two-empties system for {cp_name}")
+
+    # Setup rotation constraints for RPY empties
+    setup_vb_empty_rotation_constraints()
+
+    bpy.context.view_layer.update()
+
+    script_log(f"✓ Created {len(joint_control_systems)} vertex bundle systems with proper rotation")
+    return True
+
+##########################################################################################
+
+def calculate_proper_rotation_for_joint(cp_obj, target_cp, cp_name):
+    """Calculate the proper rotation so local Z-axis points along limb direction"""
+
+    if target_cp:
+        # For limb joints: point Z-axis toward target
+        current_pos = cp_obj.matrix_world.translation
+        target_pos = target_cp.matrix_world.translation
+        direction = (target_pos - current_pos).normalized()
+
+        # Default Z-axis is (0,0,1) - we want it to point in 'direction'
+        z_axis = Vector((0, 0, 1))
+        rotation_quat = z_axis.rotation_difference(direction)
+
+        script_log(f"  - {cp_name}: Z-axis points toward {target_cp.name}")
+        return rotation_quat
+    else:
+        # For end joints (wrists, ankles, head): use default rotation
+        # This keeps Z-axis pointing up (0,0,1)
+        script_log(f"  - {cp_name}: Using default Z-up rotation")
+        return Quaternion((1, 0, 0,
+                           0))  # Identity rotation
+
+##########################################################################################
+
+def verify_rpy_empty_parenting():
+    """Verify that RPY empties are properly parented to follow control points"""
+    script_log("=== VERIFYING RPY EMPTY PARENTING ===")
+
+    for control_point_name, system_data in joint_control_systems.items():
+        control_point_obj = bpy.data.objects.get(control_point_name)
+        xyz_empty = system_data.get('xyz_empty')
+        rpy_empty = system_data.get('rpy_empty')
+
+        if control_point_obj and xyz_empty and rpy_empty:
+            script_log(f"  {control_point_name}:")
+            script_log(f"    Control Point: {control_point_obj.name} at {control_point_obj.location}")
+            script_log(f"    XYZ Empty parent: {xyz_empty.parent.name if xyz_empty.parent else 'None'}")
+            script_log(f"    RPY Empty parent: {rpy_empty.parent.name if rpy_empty.parent else 'None'}")
+            script_log(f"    RPY Empty location: {rpy_empty.location}")
+
+            # Check if parenting chain is correct
+            correct_parenting = (
+                    xyz_empty.parent == control_point_obj and
+                    rpy_empty.parent == xyz_empty
+            )
+
+            if correct_parenting:
+                script_log(f"    ✓ Parenting chain is correct")
+            else:
+                script_log(f"    ERROR: Parenting chain is broken!")
+
+##########################################################################################
 
 # Helper function for garment creators to easily add dynamic weighting
 def setup_garment_dynamic_weighting(garment_obj, side, garment_type):

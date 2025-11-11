@@ -254,7 +254,7 @@
       }
     },
     "left_sleeve": {
-      "enabled": false,
+      "enabled": true,
       "diameter_shoulder": 0.15,
       "diameter_elbow": 0.12,
       "diameter_wrist": 0.08,
@@ -422,7 +422,7 @@
       }
     },
     "coat_torso": {
-      "enabled": true,
+      "enabled": false,
       "radial_segments": 32,
       "longitudinal_segments": 24,
       "torso_height": 0.8,

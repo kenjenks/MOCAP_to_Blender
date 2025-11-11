@@ -193,11 +193,14 @@
         "enable_nose_bridge": true,
         "eye_socket_depth": 0.08,
         "nose_bridge_height": 0.05
-      },
-      "material": {
-        "color": [0.96, 0.86, 0.72, 1.0],
-        "roughness": 0.4,
-        "metallic": 0.0
+      },"material": {
+         "color": [0.96, 0.86, 0.72, 1.0],
+         "roughness": 0.4,
+         "metallic": 0.0,
+         "specular": 0.3,
+         "subsurface": 0.1,
+         "subsurface_color": [0.96, 0.78, 0.64, 1.0],
+         "subsurface_radius": [1.0, 0.2, 0.1]
       },
       "cloth_settings": {
         "enabled": true,
@@ -230,8 +233,14 @@
       "collar_style": "turtleneck",
       "material": {
         "color": [0.1, 0.3, 0.8, 1.0],
-        "roughness": 0.8,
-        "metallic": 0.0
+        "roughness": 0.7,
+        "metallic": 0.0,
+        "specular": 0.15,
+        "sheen": 0.3,
+        "sheen_tint": 0.2,
+        "subsurface": 0.05,
+        "normal_strength": 1.0,
+        "fabric_type": "wool_knit"
       },
       "cloth_settings": {
         "enabled": true,
@@ -253,8 +262,11 @@
       "vertices": 16,
       "material": {
         "color": [0.1, 0.3, 0.8, 1.0],
-        "roughness": 0.7,
-        "metallic": 0.0
+        "roughness": 0.8,
+        "metallic": 0.0,
+        "specular": 0.1,
+        "normal_strength": 1.2,
+        "fabric_type": "denim"
       },
       "subdivision": {
         "manual_cuts": 2,
@@ -292,8 +304,11 @@
       "vertices": 16,
       "material": {
         "color": [0.1, 0.3, 0.8, 1.0],
-        "roughness": 0.7,
-        "metallic": 0.0
+        "roughness": 0.8,
+        "metallic": 0.0,
+        "specular": 0.1,
+        "normal_strength": 1.2,
+        "fabric_type": "denim"
       },
       "subdivision": {
         "manual_cuts": 2,
@@ -330,8 +345,12 @@
       "segments": 32,
       "material": {
         "color": [0.9, 0.9, 0.9, 1.0],
-        "roughness": 0.8,
-        "metallic": 0.0
+        "roughness": 0.6,
+        "metallic": 0.0,
+        "specular": 0.2,
+        "sheen": 0.4,
+        "sheen_tint": 0.1,
+        "fabric_type": "wool_gabardine"
       },
       "subdivision": {
         "manual_cuts": 2,
@@ -368,8 +387,12 @@
       "segments": 32,
       "material": {
         "color": [0.9, 0.9, 0.9, 1.0],
-        "roughness": 0.8,
-        "metallic": 0.0
+        "roughness": 0.6,
+        "metallic": 0.0,
+        "specular": 0.2,
+        "sheen": 0.4,
+        "sheen_tint": 0.1,
+        "fabric_type": "wool_gabardine"
       },
       "subdivision": {
         "manual_cuts": 2,
@@ -422,8 +445,15 @@
       },
       "material": {
         "color": [0.1, 0.3, 0.8, 1.0],
-        "roughness": 0.7,
-        "metallic": 0.0
+        "roughness": 0.6,
+        "metallic": 0.0,
+        "specular": 0.2,
+        "sheen": 0.4,
+        "sheen_tint": 0.15,
+        "subsurface": 0.01,
+        "normal_strength": 0.8,
+        "clearcoat": 0.05,
+        "fabric_type": "wool_overcoat"
       },
       "vertex_weighting": {
         "sphere_falloff": "quadratic",
@@ -455,8 +485,11 @@
       "segments": 8,
       "material": {
         "color": [0.3, 0.2, 0.1, 1.0],
-        "roughness": 0.9,
-        "metallic": 0.1
+        "roughness": 0.95,
+        "metallic": 0.0,
+        "specular": 0.08,
+        "normal_strength": 2.5,
+        "material_type": "rough_leather"
       },
       "vertex_weighting": {
         "sphere_falloff": "quadratic",
@@ -483,8 +516,11 @@
       "segments": 8,
       "material": {
         "color": [0.3, 0.2, 0.1, 1.0],
-        "roughness": 0.9,
-        "metallic": 0.1
+        "roughness": 0.95,
+        "metallic": 0.0,
+        "specular": 0.08,
+        "normal_strength": 2.5,
+        "material_type": "rough_leather"
       },
       "vertex_weighting": {
         "sphere_falloff": "quadratic",
@@ -510,8 +546,14 @@
       "segments": 8,
       "material": {
         "color": [0.8, 0.1, 0.1, 1.0],
-        "roughness": 0.6,
-        "metallic": 0.0
+        "roughness": 0.7,
+        "metallic": 0.0,
+        "specular": 0.1,
+        "sheen": 0.3,
+        "sheen_tint": 0.2,
+        "subsurface": 0.08,
+        "normal_strength": 1.5,
+        "fabric_type": "knitted_wool"
       },
       "vertex_weighting": {
         "sphere_falloff": "quadratic",
@@ -537,8 +579,14 @@
       "segments": 8,
       "material": {
         "color": [0.8, 0.1, 0.1, 1.0],
-        "roughness": 0.6,
-        "metallic": 0.0
+        "roughness": 0.7,
+        "metallic": 0.0,
+        "specular": 0.1,
+        "sheen": 0.3,
+        "sheen_tint": 0.2,
+        "subsurface": 0.08,
+        "normal_strength": 1.5,
+        "fabric_type": "knitted_wool"
       },
       "vertex_weighting": {
         "sphere_falloff": "quadratic",
