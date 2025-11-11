@@ -4455,12 +4455,38 @@ def create_coat(armature_obj, figure_name):
             if mod.type == 'SHRINKWRAP':
                 coat_obj.modifiers.remove(mod)
 
-        # GET XYZ SHOULDER EMPTIES (NOT RPY EMPTIES)
-        left_shoulder_xyz_empty = bpy.data.objects.get("CTRL_LEFT_SHOULDER")
-        right_shoulder_xyz_empty = bpy.data.objects.get("CTRL_RIGHT_SHOULDER")
+        # GET XYZ SHOULDER EMPTIES USING JOINT CONTROL SYSTEMS (like create_sleeve does)
+        left_shoulder_control_name = "CTRL_LEFT_SHOULDER"
+        right_shoulder_control_name = "CTRL_RIGHT_SHOULDER"
 
-        if not left_shoulder_xyz_empty or not right_shoulder_xyz_empty:
+        # Get joint control systems using correct names
+        left_shoulder_control = joint_control_systems.get(left_shoulder_control_name, {})
+        right_shoulder_control = joint_control_systems.get(right_shoulder_control_name, {})
+
+        if not all([left_shoulder_control, right_shoulder_control]):
+            script_log("Warning: Missing joint control systems for coat shoulders")
+            # Fallback: try to get XYZ empties directly using correct naming pattern
+            left_shoulder_xyz_empty = bpy.data.objects.get(f"XYZ_{left_shoulder_control_name}")
+            right_shoulder_xyz_empty = bpy.data.objects.get(f"XYZ_{right_shoulder_control_name}")
+
+            if not left_shoulder_xyz_empty:
+                script_log(f"ERROR: Could not find XYZ empty: XYZ_{left_shoulder_control_name}")
+            if not right_shoulder_xyz_empty:
+                script_log(f"ERROR: Could not find XYZ empty: XYZ_{right_shoulder_control_name}")
+        else:
+            # Use XYZ empties (these are the actual empties that follow control points)
+            left_shoulder_xyz_empty = left_shoulder_control.get('xyz_empty')
+            right_shoulder_xyz_empty = right_shoulder_control.get('xyz_empty')
+
+        if not all([left_shoulder_xyz_empty, right_shoulder_xyz_empty]):
             script_log("ERROR: Could not find XYZ shoulder empties for coat pinning")
+
+            # Final fallback: list available objects to help debug
+            script_log("DEBUG: Available objects starting with 'XYZ_':")
+            for obj in bpy.data.objects:
+                if obj.name.startswith('XYZ_'):
+                    script_log(f"  - {obj.name}")
+
             return None
 
         script_log(
@@ -4517,100 +4543,91 @@ def create_coat(armature_obj, figure_name):
                     right_shoulder_vertices.append(vert.index)
 
         # =========================================================================
-        # STEP 8: CREATE SHAPE KEYS WITH DRIVERS FOR REAL-TIME FOLLOWING
+        # STEP 8: USE DAMPED TRACK AND STRETCH-TO CONSTRAINTS FOR PROPER ROTATION AND PINNING
         # =========================================================================
-        script_log("DEBUG: Creating shape keys with drivers for real-time shoulder following...")
+        script_log("DEBUG: Setting up proper rotation and pinning constraints...")
 
-        # Ensure we have basis shape key
-        if not coat_obj.data.shape_keys:
-            coat_obj.shape_key_add(name="Basis")
+        # Create a control empty at the shoulder center
+        shoulder_center = (
+                                      left_shoulder_xyz_empty.matrix_world.translation + right_shoulder_xyz_empty.matrix_world.translation) / 2
 
-        # Create shape key for left shoulder following
-        left_shoulder_shape = coat_obj.shape_key_add(name="Left_Shoulder_Follow")
-        left_shoulder_shape.value = 0.0
-        left_shoulder_shape.relative_key = coat_obj.data.shape_keys.key_blocks["Basis"]
+        bpy.ops.object.empty_add(type='PLAIN_AXES', location=shoulder_center)
+        coat_control = bpy.context.active_object
+        coat_control.name = f"{figure_name}_Coat_Control"
 
-        # Create shape key for right shoulder following
-        right_shoulder_shape = coat_obj.shape_key_add(name="Right_Shoulder_Follow")
-        right_shoulder_shape.value = 0.0
-        right_shoulder_shape.relative_key = coat_obj.data.shape_keys.key_blocks["Basis"]
+        # Clear any existing constraints from the coat control
+        for constraint in list(coat_control.constraints):
+            coat_control.constraints.remove(constraint)
 
-        # Set up drivers for shape keys to follow empties
-        def setup_shoulder_shape_driver(coat_obj, shape_key_name, shoulder_empty, vertex_indices, influence_radius):
-            """Set up shape key drivers to follow shoulder empties"""
+        # PARENTING: Parent the coat to this control
+        coat_obj.parent = coat_control
 
-            shape_key = coat_obj.data.shape_keys.key_blocks[shape_key_name]
+        coat_obj.rotation_euler = (0, 0, math.radians(90))  # 90° rotation around Z-axis
 
-            # For each influenced vertex, set up driver to follow empty
-            for vert_index in vertex_indices:
-                # Store original position
-                original_pos = coat_obj.data.vertices[vert_index].co.copy()
+        #  Move coat RIGHT by half its shoulder_width so coat is centered
+        #  Move coat DOWN by half its height so left shoulder aligns with left shoulder empty
+        coat_obj.location = (0, shoulder_width / 2.0, -coat_height / 2.0)
 
-                # Create driver for this vertex in the shape key
-                data_path = f'key_blocks["{shape_key_name}"].data[{vert_index}].co'
+        script_log(f"✓ Coat offset by -Z {coat_height / 2.0:.3f} to align left shoulder with left shoulder empty")
 
-                # X coordinate driver
-                driver_x = coat_obj.data.shape_keys.driver_add(data_path, 0).driver
-                driver_x.type = 'SCRIPTED'
+        # CONSTRAINT 1: DAMPED TRACK to make coat rotate with shoulder line
+        damped_track = coat_control.constraints.new(type='DAMPED_TRACK')
+        damped_track.target = right_shoulder_xyz_empty  # Track towards right shoulder
+        damped_track.track_axis = 'TRACK_X'  # Track along the shoulder line
 
-                # Add empty position variable
-                empty_x = driver_x.variables.new()
-                empty_x.name = "empty_x"
-                empty_x.type = 'TRANSFORMS'
-                empty_x.targets[0].id = shoulder_empty
-                empty_x.targets[0].transform_type = 'LOC_X'
+        # CONSTRAINT 2: COPY LOCATION from left shoulder (primary anchor)
+        copy_left = coat_control.constraints.new(type='COPY_LOCATION')
+        copy_left.target = left_shoulder_xyz_empty
+        copy_left.influence = 1.0  # Full influence from left shoulder
 
-                # Add original position variable
-                orig_x = driver_x.variables.new()
-                orig_x.name = "orig_x"
-                orig_x.type = 'SINGLE_PROP'
-                orig_x.targets[0].id = coat_obj
-                orig_x.targets[0].data_path = f'data.vertices[{vert_index}].co[0]'
+        # CONSTRAINT 3: STRETCH TO right shoulder to maintain shoulder width
+        stretch_to = coat_control.constraints.new(type='STRETCH_TO')
+        stretch_to.target = right_shoulder_xyz_empty
+        stretch_to.rest_length = shoulder_width  # Initial distance between shoulders
+        stretch_to.volume = 'NO_VOLUME'  # Don't preserve volume, just stretch
+        stretch_to.influence = 1.0
 
-                # Driver expression: follow empty X with influence based on vertex group weight
-                driver_x.expression = f"orig_x + (empty_x - {original_pos[0]})"
+        # DEBUG: Verify we're using the correct empties
+        script_log(f"✓ Using XYZ empties: {left_shoulder_xyz_empty.name}, {right_shoulder_xyz_empty.name}")
+        script_log(f"✓ Damped Track: Following {right_shoulder_xyz_empty.name}")
+        script_log(f"✓ Copy Location: Anchored to {left_shoulder_xyz_empty.name}")
+        script_log(f"✓ Stretch To: Maintaining shoulder width {shoulder_width:.3f}")
 
-                # Y coordinate driver
-                driver_y = coat_obj.data.shape_keys.driver_add(data_path, 1).driver
-                driver_y.type = 'SCRIPTED'
+        # Now set up vertex-based pinning for cloth simulation
+        # Create vertex groups for shoulder pinning (for cloth simulation)
+        left_shoulder_group = coat_obj.vertex_groups.new(name="Left_Shoulder_Pin")
+        right_shoulder_group = coat_obj.vertex_groups.new(name="Right_Shoulder_Pin")
 
-                empty_y = driver_y.variables.new()
-                empty_y.name = "empty_y"
-                empty_y.type = 'TRANSFORMS'
-                empty_y.targets[0].id = shoulder_empty
-                empty_y.targets[0].transform_type = 'LOC_Y'
+        # Apply strong pinning weights to shoulder areas
+        for vert in mesh.vertices:
+            vert_co = coat_obj.matrix_world @ vert.co
+            vert_height = vert_co.z - shoulder_center.z
 
-                orig_y = driver_y.variables.new()
-                orig_y.name = "orig_y"
-                orig_y.type = 'SINGLE_PROP'
-                orig_y.targets[0].id = coat_obj
-                orig_y.targets[0].data_path = f'data.vertices[{vert_index}].co[1]'
+            # LEFT SHOULDER - STRONG PINNING (around left shoulder area)
+            dist_to_left = (vert_co - left_shoulder_xyz_empty.matrix_world.translation).length
+            if dist_to_left <= shoulder_influence_radius:
+                weight = 1.0 - (dist_to_left / shoulder_influence_radius)
+                weight = weight * weight  # Quadratic falloff
 
-                driver_y.expression = f"orig_y + (empty_y - {original_pos[1]})"
+                # Height-based attenuation - only pin upper areas
+                height_factor = max(0.0, 1.0 - (abs(vert_height) / (coat_height * 0.2)))
+                final_weight = weight * height_factor
 
-                # Z coordinate driver
-                driver_z = coat_obj.data.shape_keys.driver_add(data_path, 2).driver
-                driver_z.type = 'SCRIPTED'
+                if final_weight > 0.1:
+                    left_shoulder_group.add([vert.index], final_weight, 'REPLACE')
 
-                empty_z = driver_z.variables.new()
-                empty_z.name = "empty_z"
-                empty_z.type = 'TRANSFORMS'
-                empty_z.targets[0].id = shoulder_empty
-                empty_z.targets[0].transform_type = 'LOC_Z'
+            # RIGHT SHOULDER - STRONG PINNING (around right shoulder area)
+            dist_to_right = (vert_co - right_shoulder_xyz_empty.matrix_world.translation).length
+            if dist_to_right <= shoulder_influence_radius:
+                weight = 1.0 - (dist_to_right / shoulder_influence_radius)
+                weight = weight * weight  # Quadratic falloff
 
-                orig_z = driver_z.variables.new()
-                orig_z.name = "orig_z"
-                orig_z.type = 'SINGLE_PROP'
-                orig_z.targets[0].id = coat_obj
-                orig_z.targets[0].data_path = f'data.vertices[{vert_index}].co[2]'
+                # Height-based attenuation - only pin upper areas
+                height_factor = max(0.0, 1.0 - (abs(vert_height) / (coat_height * 0.2)))
+                final_weight = weight * height_factor
 
-                driver_z.expression = f"orig_z + (empty_z - {original_pos[2]})"
-
-        # Set up drivers for both shoulders
-        setup_shoulder_shape_driver(coat_obj, "Left_Shoulder_Follow", left_shoulder_xyz_empty, left_shoulder_vertices,
-                                    shoulder_influence_radius)
-        setup_shoulder_shape_driver(coat_obj, "Right_Shoulder_Follow", right_shoulder_xyz_empty,
-                                    right_shoulder_vertices, shoulder_influence_radius)
+                if final_weight > 0.1:
+                    right_shoulder_group.add([vert.index], final_weight, 'REPLACE')
 
         # Create combined pinning group for cloth simulation
         combined_anchors_group = coat_obj.vertex_groups.new(name="Coat_Combined_Anchors")
@@ -4618,7 +4635,7 @@ def create_coat(armature_obj, figure_name):
         # Combine weights from both shoulder groups
         for i in range(len(coat_obj.data.vertices)):
             max_weight = 0.0
-            for group_name in ["Left_Shoulder_XYZ", "Right_Shoulder_XYZ"]:
+            for group_name in ["Left_Shoulder_Pin", "Right_Shoulder_Pin"]:
                 group = coat_obj.vertex_groups.get(group_name)
                 if group:
                     try:
@@ -4630,8 +4647,52 @@ def create_coat(armature_obj, figure_name):
             if max_weight > 0.1:
                 combined_anchors_group.add([i], max_weight, 'REPLACE')
 
+        script_log("✓ Coat control setup with DAMPED_TRACK + COPY_LOCATION + STRETCH_TO")
+        script_log("✓ Vertex-based pinning ready for cloth simulation")
+
+        # FUTURE: Hip pinning setup (commented out for now)
+        """
+        # Get hip empties for future short coat pinning
+        left_hip_xyz_empty = bpy.data.objects.get("CTRL_LEFT_HIP")
+        right_hip_xyz_empty = bpy.data.objects.get("CTRL_RIGHT_HIP")
+
+        if left_hip_xyz_empty and right_hip_xyz_empty:
+            # Create hip vertex groups
+            left_hip_group = coat_obj.vertex_groups.new(name="Left_Hip_Zone")
+            right_hip_group = coat_obj.vertex_groups.new(name="Right_Hip_Zone")
+
+            # Identify hip-influenced vertices (lower part of coat)
+            hip_vertices = []
+            for vert in coat_obj.data.vertices:
+                vert_co = coat_obj.matrix_world @ vert.co
+                vert_height = vert_co.z - shoulder_center.z
+
+                # Hip zone is lower part of coat
+                if vert_height < -coat_height * 0.3:  # Lower 30%
+                    # Apply weights based on proximity to hips
+                    dist_to_left_hip = (vert_co - left_hip_xyz_empty.matrix_world.translation).length
+                    dist_to_right_hip = (vert_co - right_hip_xyz_empty.matrix_world.translation).length
+
+                    if dist_to_left_hip < shoulder_influence_radius:
+                        weight = 1.0 - (dist_to_left_hip / shoulder_influence_radius)
+                        left_hip_group.add([vert.index], weight, 'REPLACE')
+                        hip_vertices.append(vert.index)
+
+                    if dist_to_right_hip < shoulder_influence_radius:
+                        weight = 1.0 - (dist_to_right_hip / shoulder_influence_radius)  
+                        right_hip_group.add([vert.index], weight, 'REPLACE')
+                        hip_vertices.append(vert.index)
+
+            # Set up hip pinning drivers (only for short coats)
+            if coat_length == "short":
+                hip_shape.value = 1.0  # Activate hip pinning for short coats
+                setup_pinning_zone_drivers(coat_obj, "Hip_Pinning", left_hip_xyz_empty, hip_vertices, shoulder_influence_radius)
+                setup_pinning_zone_drivers(coat_obj, "Hip_Pinning", right_hip_xyz_empty, hip_vertices, shoulder_influence_radius)
+        """
+
+        script_log(f"✓ Created modular pinning system ready for future hip integration")
         script_log(
-            f"✓ Created shape key drivers for {len(left_shoulder_vertices)} left and {len(right_shoulder_vertices)} right shoulder vertices")
+            f"✓ Shoulder pinning active for {len(left_shoulder_vertices) + len(right_shoulder_vertices)} vertices")
 
         # =========================================================================
         # STEP 9: ADD CLOTH SIMULATION WITH STRONG PINNING
