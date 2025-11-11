@@ -3435,6 +3435,12 @@ def create_pants(armature_obj, figure_name, side="left"):
         start_location=hip_vb_empty.location,  # TOP at hips
         end_location=knee_vb_empty.location  # BOTTOM at knees
     )
+
+    if hip_rpy_empty:
+        thigh_cylinder.parent = hip_rpy_empty
+        thigh_cylinder.location = (0, 0, 0)  # Reset local position to follow parent
+        script_log(f"✓ {thigh_cylinder.name} parented to {hip_rpy_empty.name}")
+
     # Thigh cylinder spans from hip bone to upper leg bone
     hip_bone = "DEF_LeftHip" if side == "left" else "DEF_RightHip"
     thigh_bone = "DEF_LeftThigh" if side == "left" else "DEF_RightThigh"
@@ -3451,6 +3457,12 @@ def create_pants(armature_obj, figure_name, side="left"):
         start_location=knee_vb_empty.location,  # TOP at knees
         end_location=heel_vb_empty.location  # BOTTOM at ankles
     )
+
+    if knee_rpy_empty:
+        shin_cylinder.parent = knee_rpy_empty
+        shin_cylinder.location = (0, 0, 0)  # Reset local position to follow parent
+        script_log(f"✓ {shin_cylinder.name} parented to {knee_rpy_empty.name}")
+
     # Shin cylinder spans from knee bone to ankle bone
     knee_bone = "DEF_LeftKnee" if side == "left" else "DEF_RightKnee"
     ankle_bone = "DEF_LeftAnkle" if side == "left" else "DEF_RightAnkle"
