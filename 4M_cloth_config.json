@@ -436,7 +436,7 @@
       "enable_armpit_correction": true,
       "coat_length_settings": {
         "short": {
-          "length_factor": 1.25
+          "length_factor": 1.0
         },
         "long": {
           "length_factor": 1.0,

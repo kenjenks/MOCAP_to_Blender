@@ -4185,7 +4185,6 @@ def create_coat(armature_obj, figure_name):
     radial_segments = garment_configs.get("radial_segments", 32)
     longitudinal_segments = garment_configs.get("longitudinal_segments", 24)
     torso_radius = garment_configs.get("torso_radius", 0.25)
-    coat_height = garment_configs.get("coat_height", 0.8)
     puffiness = garment_configs.get("puffiness", 1.05)
 
     # GET SHOULDER DIAMETER FROM SLEEVE CONFIG
@@ -4650,56 +4649,151 @@ def create_coat(armature_obj, figure_name):
         script_log("✓ Coat control setup with DAMPED_TRACK + COPY_LOCATION + STRETCH_TO")
         script_log("✓ Vertex-based pinning ready for cloth simulation")
 
-        # FUTURE: Hip pinning setup (commented out for now)
-        """
-        # Get hip empties for future short coat pinning
-        left_hip_xyz_empty = bpy.data.objects.get("CTRL_LEFT_HIP")
-        right_hip_xyz_empty = bpy.data.objects.get("CTRL_RIGHT_HIP")
+        # =========================================================================
+        # STEP 8.5: HIP PINNING SETUP FOR SHORT COATS
+        # =========================================================================
+        if coat_length == "short" and False:
+            script_log("DEBUG: Setting up hip pinning for short coats...")
 
-        if left_hip_xyz_empty and right_hip_xyz_empty:
-            # Create hip vertex groups
-            left_hip_group = coat_obj.vertex_groups.new(name="Left_Hip_Zone")
-            right_hip_group = coat_obj.vertex_groups.new(name="Right_Hip_Zone")
+            # Get hip control names
+            left_hip_control_name = "CTRL_LEFT_HIP"
+            right_hip_control_name = "CTRL_RIGHT_HIP"
 
-            # Identify hip-influenced vertices (lower part of coat)
-            hip_vertices = []
-            for vert in coat_obj.data.vertices:
-                vert_co = coat_obj.matrix_world @ vert.co
-                vert_height = vert_co.z - shoulder_center.z
+            # Get joint control systems for hips
+            left_hip_control = joint_control_systems.get(left_hip_control_name, {})
+            right_hip_control = joint_control_systems.get(right_hip_control_name, {})
 
-                # Hip zone is lower part of coat
-                if vert_height < -coat_height * 0.3:  # Lower 30%
-                    # Apply weights based on proximity to hips
+            if not all([left_hip_control, right_hip_control]):
+                script_log("Warning: Missing joint control systems for coat hips")
+                # Fallback: try to get XYZ empties directly using correct naming pattern
+                left_hip_xyz_empty = bpy.data.objects.get(f"XYZ_{left_hip_control_name}")
+                right_hip_xyz_empty = bpy.data.objects.get(f"XYZ_{right_hip_control_name}")
+
+                if not left_hip_xyz_empty:
+                    script_log(f"ERROR: Could not find XYZ empty: XYZ_{left_hip_control_name}")
+                if not right_hip_xyz_empty:
+                    script_log(f"ERROR: Could not find XYZ empty: XYZ_{right_hip_control_name}")
+            else:
+                # Use XYZ empties (these are the actual empties that follow control points)
+                left_hip_xyz_empty = left_hip_control.get('xyz_empty')
+                right_hip_xyz_empty = right_hip_control.get('xyz_empty')
+
+            if left_hip_xyz_empty and right_hip_xyz_empty:
+                script_log(f"✓ Using hip XYZ empties: {left_hip_xyz_empty.name}, {right_hip_xyz_empty.name}")
+
+                # Create hip vertex groups
+                left_hip_group = coat_obj.vertex_groups.new(name="Left_Hip_Zone")
+                right_hip_group = coat_obj.vertex_groups.new(name="Right_Hip_Zone")
+
+                # Get hip diameter from base radii
+                base_radii = garment_configs.get("base_radii", {})
+                hip_radius = base_radii.get("hip", 0.09)  # 9cm radius from config
+                hip_diameter = hip_radius * 2  # 18cm diameter
+                hip_influence_radius = hip_diameter * 1.2  # 21.6cm influence radius
+
+                for vert in coat_obj.data.vertices:
+                    vert_co = coat_obj.matrix_world @ vert.co
+
+                    # LEFT HIP - PINNING (based on distance only)
                     dist_to_left_hip = (vert_co - left_hip_xyz_empty.matrix_world.translation).length
+                    if dist_to_left_hip < hip_influence_radius:
+                        weight = 1.0 - (dist_to_left_hip / hip_influence_radius)
+                        weight = weight * weight  # Quadratic falloff
+
+                        if weight > 0.1:
+                            left_hip_group.add([vert.index], weight, 'REPLACE')
+                            left_hip_vertices.append(vert.index)
+
+                    # RIGHT HIP - PINNING (based on distance only)
                     dist_to_right_hip = (vert_co - right_hip_xyz_empty.matrix_world.translation).length
+                    if dist_to_right_hip < hip_influence_radius:
+                        weight = 1.0 - (dist_to_right_hip / hip_influence_radius)
+                        weight = weight * weight  # Quadratic falloff
 
-                    if dist_to_left_hip < shoulder_influence_radius:
-                        weight = 1.0 - (dist_to_left_hip / shoulder_influence_radius)
-                        left_hip_group.add([vert.index], weight, 'REPLACE')
-                        hip_vertices.append(vert.index)
+                        if weight > 0.1:
+                            right_hip_group.add([vert.index], weight, 'REPLACE')
+                            right_hip_vertices.append(vert.index)
 
-                    if dist_to_right_hip < shoulder_influence_radius:
-                        weight = 1.0 - (dist_to_right_hip / shoulder_influence_radius)  
-                        right_hip_group.add([vert.index], weight, 'REPLACE')
-                        hip_vertices.append(vert.index)
+                script_log(
+                    f"✓ Identified {len(left_hip_vertices)} left hip vertices and {len(right_hip_vertices)} right hip vertices")
 
-            # Set up hip pinning drivers (only for short coats)
-            if coat_length == "short":
-                hip_shape.value = 1.0  # Activate hip pinning for short coats
-                setup_pinning_zone_drivers(coat_obj, "Hip_Pinning", left_hip_xyz_empty, hip_vertices, shoulder_influence_radius)
-                setup_pinning_zone_drivers(coat_obj, "Hip_Pinning", right_hip_xyz_empty, hip_vertices, shoulder_influence_radius)
-        """
+                # Set up hip pinning for short coats
+                script_log("✓ Activating hip pinning for short coat")
 
-        script_log(f"✓ Created modular pinning system ready for future hip integration")
-        script_log(
-            f"✓ Shoulder pinning active for {len(left_shoulder_vertices) + len(right_shoulder_vertices)} vertices")
+                # Create a separate hip control empty
+                hip_center = (
+                                         left_hip_xyz_empty.matrix_world.translation + right_hip_xyz_empty.matrix_world.translation) / 2
+                bpy.ops.object.empty_add(type='PLAIN_AXES', location=hip_center)
+                hip_control = bpy.context.active_object
+                hip_control.name = f"{figure_name}_Hip_Control"
+
+                # Make hip control follow both hips with CORRECT assignments
+                copy_left_hip = hip_control.constraints.new(type='COPY_LOCATION')
+                copy_left_hip.target = left_hip_xyz_empty  # LEFT hip follows LEFT hip empty
+                copy_left_hip.influence = 0.5
+
+                copy_right_hip = hip_control.constraints.new(type='COPY_LOCATION')
+                copy_right_hip.target = right_hip_xyz_empty  # RIGHT hip follows RIGHT hip empty
+                copy_right_hip.influence = 0.5
+
+                # Now make the coat control follow a blend of shoulder control and hip control
+                # BUT preserve the original shoulder constraints!
+                # Store the original shoulder constraints before clearing
+                original_constraints = []
+                for constraint in coat_control.constraints:
+                    if constraint.type in ['COPY_LOCATION', 'DAMPED_TRACK', 'STRETCH_TO']:
+                        original_constraints.append({
+                            'type': constraint.type,
+                            'target': constraint.target,
+                            'influence': constraint.influence,
+                            'track_axis': getattr(constraint, 'track_axis', None),
+                            'rest_length': getattr(constraint, 'rest_length', None)
+                        })
+
+                # Clear existing constraints from coat control
+                for constraint in list(coat_control.constraints):
+                    coat_control.constraints.remove(constraint)
+
+                # Re-add the original shoulder constraints with reduced influence
+                shoulder_influence = 0.6  # 60% shoulder influence
+                hip_influence = 0.4  # 40% hip influence
+
+                for constraint_data in original_constraints:
+                    new_constraint = coat_control.constraints.new(type=constraint_data['type'])
+                    new_constraint.target = constraint_data['target']
+
+                    if constraint_data['type'] == 'COPY_LOCATION':
+                        # This is the left shoulder anchor - reduce its influence
+                        new_constraint.influence = constraint_data['influence'] * shoulder_influence
+                    elif constraint_data['type'] == 'DAMPED_TRACK':
+                        new_constraint.track_axis = constraint_data['track_axis']
+                        new_constraint.influence = constraint_data['influence'] * shoulder_influence
+                    elif constraint_data['type'] == 'STRETCH_TO':
+                        new_constraint.rest_length = constraint_data['rest_length']
+                        new_constraint.volume = 'NO_VOLUME'
+                        new_constraint.influence = constraint_data['influence'] * shoulder_influence
+                    else:
+                        new_constraint.influence = constraint_data['influence'] * shoulder_influence
+
+                # Add hip influence
+                copy_hips = coat_control.constraints.new(type='COPY_LOCATION')
+                copy_hips.target = hip_control
+                copy_hips.influence = hip_influence
+
+                script_log("✓ Short coat: 60% shoulder influence + 40% hip influence")
+                script_log("✓ Left shoulder remains anchored to left shoulder XYZ empty")
+                script_log("✓ Right shoulder remains anchored via stretch-to constraint")
+                script_log("✓ Hips influence overall position without breaking shoulder connections")
+                script_log("✓ Added hip vertices to cloth pinning group for short coat")
+            else:
+                script_log("ERROR: Hip XYZ empties not found - hip pinning disabled")
 
         # =========================================================================
         # STEP 9: ADD CLOTH SIMULATION WITH STRONG PINNING
         # =========================================================================
         script_log("DEBUG: Adding cloth simulation with strong shoulder pinning...")
 
-        # FIX: Get cloth settings from the correct nested structure
+        # Get cloth settings from the correct nested structure
         coat_config = garment_configs.get("coat_torso", {})
         cloth_config = coat_config.get("cloth_settings", {})
 
@@ -4736,9 +4830,6 @@ def create_coat(armature_obj, figure_name):
             # Self-collision
             cloth_mod.collision_settings.use_self_collision = True
             cloth_mod.collision_settings.self_distance_min = cloth_config.get("self_distance_min", 0.002)
-
-            # PIN COAT TO SHOULDERS USING XYZ EMPTIES
-            cloth_mod.settings.vertex_group_mass = "Coat_Combined_Anchors"
 
             script_log("✓ Coat cloth: STRONG shoulder pinning using shape key drivers")
         else:
