@@ -3282,6 +3282,43 @@ def create_boot(armature_obj, figure_name, garment_config, global_cloth_settings
 
 ##########################################################################################
 
+def parent_and_align_cylinder(cylinder_obj, parent_empty, start_global, end_global):
+    """
+    Parent a cylinder to an empty and align it between two global positions
+    """
+    if not parent_empty:
+        return False
+
+    # Parent the cylinder
+    cylinder_obj.parent = parent_empty
+
+    # Calculate cylinder properties in global space
+    cylinder_direction = end_global - start_global
+    cylinder_length = cylinder_direction.length
+    cylinder_center_global = start_global + (cylinder_direction / 2)
+
+    # Convert cylinder center to local space relative to parent
+    parent_matrix = parent_empty.matrix_world
+    cylinder_center_local = parent_matrix.inverted() @ cylinder_center_global
+
+    # Position cylinder in local space
+    cylinder_obj.location = cylinder_center_local
+
+    # Calculate rotation to align cylinder with start→end direction
+    up_vector = Vector((0, 0, 1))
+    if cylinder_direction.length > 0.001:
+        cylinder_direction.normalize()
+        rotation_quat = up_vector.rotation_difference(cylinder_direction)
+
+        # Convert rotation to local space
+        cylinder_obj.rotation_mode = 'QUATERNION'
+        local_rotation = parent_matrix.inverted().to_3x3() @ rotation_quat.to_matrix()
+        cylinder_obj.rotation_quaternion = local_rotation.to_quaternion()
+
+    return True
+
+##########################################################################################
+
 def create_pants(armature_obj, figure_name, side="left"):
     """Create pants using spheres at joints and tapered cylinders between them"""
     script_log(f"Creating {side} pants with sphere-based approach...")
@@ -3437,9 +3474,16 @@ def create_pants(armature_obj, figure_name, side="left"):
     )
 
     if hip_vb_empty:
-        thigh_cylinder.parent = hip_vb_empty
-        thigh_cylinder.location = (0, 0, 0)  # Reset local position to follow parent
-        script_log(f"✓ {thigh_cylinder.name} parented to {hip_vb_empty.name}")
+        success = parent_and_align_cylinder(
+            thigh_cylinder,
+            hip_vb_empty,
+            hip_vb_empty.location,  # start (hip)
+            knee_vb_empty.location  # end (knee)
+        )
+        if success:
+            script_log(f"✓ {thigh_cylinder.name} parented and aligned from hip to knee")
+        else:
+            script_log(f"ERROR: {thigh_cylinder.name} parenting failed")
 
     # Thigh cylinder spans from hip bone to upper leg bone
     hip_bone = "DEF_LeftHip" if side == "left" else "DEF_RightHip"
@@ -3459,9 +3503,16 @@ def create_pants(armature_obj, figure_name, side="left"):
     )
 
     if knee_vb_empty:
-        shin_cylinder.parent = knee_vb_empty
-        shin_cylinder.location = (0, 0, 0)  # Reset local position to follow parent
-        script_log(f"✓ {shin_cylinder.name} parented to {knee_vb_empty.name}")
+        success = parent_and_align_cylinder(
+            shin_cylinder,
+            knee_vb_empty,
+            knee_vb_empty.location,  # start (knee)
+            heel_vb_empty.location  # end (ankle)
+        )
+        if success:
+            script_log(f"✓ {shin_cylinder.name} parented and aligned from knee to ankle")
+        else:
+            script_log(f"ERROR: {shin_cylinder.name} parenting failed")
 
     # Shin cylinder spans from knee bone to ankle bone
     knee_bone = "DEF_LeftKnee" if side == "left" else "DEF_RightKnee"
