@@ -4450,6 +4450,11 @@ def create_coat(armature_obj, figure_name):
             if mod.type == 'ARMATURE':
                 coat_obj.modifiers.remove(mod)
 
+        # Remove any existing shrinkwrap modifiers
+        for mod in list(coat_obj.modifiers):
+            if mod.type == 'SHRINKWRAP':
+                coat_obj.modifiers.remove(mod)
+
         # GET XYZ SHOULDER EMPTIES (NOT RPY EMPTIES)
         left_shoulder_xyz_empty = bpy.data.objects.get("CTRL_LEFT_SHOULDER")
         right_shoulder_xyz_empty = bpy.data.objects.get("CTRL_RIGHT_SHOULDER")
@@ -4473,6 +4478,10 @@ def create_coat(armature_obj, figure_name):
         left_shoulder_pos = left_shoulder_xyz_empty.matrix_world.translation
         right_shoulder_pos = right_shoulder_xyz_empty.matrix_world.translation
 
+        # Store which vertices are influenced by each shoulder
+        left_shoulder_vertices = []
+        right_shoulder_vertices = []
+
         for vert in mesh.vertices:
             vert_co = coat_obj.matrix_world @ vert.co
             vert_height = vert_co.z - shoulder_center.z
@@ -4490,6 +4499,7 @@ def create_coat(armature_obj, figure_name):
 
                 if final_weight > 0.1:  # Higher threshold for strong pinning
                     left_shoulder_group.add([vert.index], final_weight, 'REPLACE')
+                    left_shoulder_vertices.append(vert.index)
 
             # RIGHT SHOULDER - STRONG PINNING
             dist_to_right = (vert_co - right_shoulder_pos).length
@@ -4504,6 +4514,103 @@ def create_coat(armature_obj, figure_name):
 
                 if final_weight > 0.1:  # Higher threshold for strong pinning
                     right_shoulder_group.add([vert.index], final_weight, 'REPLACE')
+                    right_shoulder_vertices.append(vert.index)
+
+        # =========================================================================
+        # STEP 8: CREATE SHAPE KEYS WITH DRIVERS FOR REAL-TIME FOLLOWING
+        # =========================================================================
+        script_log("DEBUG: Creating shape keys with drivers for real-time shoulder following...")
+
+        # Ensure we have basis shape key
+        if not coat_obj.data.shape_keys:
+            coat_obj.shape_key_add(name="Basis")
+
+        # Create shape key for left shoulder following
+        left_shoulder_shape = coat_obj.shape_key_add(name="Left_Shoulder_Follow")
+        left_shoulder_shape.value = 0.0
+        left_shoulder_shape.relative_key = coat_obj.data.shape_keys.key_blocks["Basis"]
+
+        # Create shape key for right shoulder following
+        right_shoulder_shape = coat_obj.shape_key_add(name="Right_Shoulder_Follow")
+        right_shoulder_shape.value = 0.0
+        right_shoulder_shape.relative_key = coat_obj.data.shape_keys.key_blocks["Basis"]
+
+        # Set up drivers for shape keys to follow empties
+        def setup_shoulder_shape_driver(coat_obj, shape_key_name, shoulder_empty, vertex_indices, influence_radius):
+            """Set up shape key drivers to follow shoulder empties"""
+
+            shape_key = coat_obj.data.shape_keys.key_blocks[shape_key_name]
+
+            # For each influenced vertex, set up driver to follow empty
+            for vert_index in vertex_indices:
+                # Store original position
+                original_pos = coat_obj.data.vertices[vert_index].co.copy()
+
+                # Create driver for this vertex in the shape key
+                data_path = f'key_blocks["{shape_key_name}"].data[{vert_index}].co'
+
+                # X coordinate driver
+                driver_x = coat_obj.data.shape_keys.driver_add(data_path, 0).driver
+                driver_x.type = 'SCRIPTED'
+
+                # Add empty position variable
+                empty_x = driver_x.variables.new()
+                empty_x.name = "empty_x"
+                empty_x.type = 'TRANSFORMS'
+                empty_x.targets[0].id = shoulder_empty
+                empty_x.targets[0].transform_type = 'LOC_X'
+
+                # Add original position variable
+                orig_x = driver_x.variables.new()
+                orig_x.name = "orig_x"
+                orig_x.type = 'SINGLE_PROP'
+                orig_x.targets[0].id = coat_obj
+                orig_x.targets[0].data_path = f'data.vertices[{vert_index}].co[0]'
+
+                # Driver expression: follow empty X with influence based on vertex group weight
+                driver_x.expression = f"orig_x + (empty_x - {original_pos[0]})"
+
+                # Y coordinate driver
+                driver_y = coat_obj.data.shape_keys.driver_add(data_path, 1).driver
+                driver_y.type = 'SCRIPTED'
+
+                empty_y = driver_y.variables.new()
+                empty_y.name = "empty_y"
+                empty_y.type = 'TRANSFORMS'
+                empty_y.targets[0].id = shoulder_empty
+                empty_y.targets[0].transform_type = 'LOC_Y'
+
+                orig_y = driver_y.variables.new()
+                orig_y.name = "orig_y"
+                orig_y.type = 'SINGLE_PROP'
+                orig_y.targets[0].id = coat_obj
+                orig_y.targets[0].data_path = f'data.vertices[{vert_index}].co[1]'
+
+                driver_y.expression = f"orig_y + (empty_y - {original_pos[1]})"
+
+                # Z coordinate driver
+                driver_z = coat_obj.data.shape_keys.driver_add(data_path, 2).driver
+                driver_z.type = 'SCRIPTED'
+
+                empty_z = driver_z.variables.new()
+                empty_z.name = "empty_z"
+                empty_z.type = 'TRANSFORMS'
+                empty_z.targets[0].id = shoulder_empty
+                empty_z.targets[0].transform_type = 'LOC_Z'
+
+                orig_z = driver_z.variables.new()
+                orig_z.name = "orig_z"
+                orig_z.type = 'SINGLE_PROP'
+                orig_z.targets[0].id = coat_obj
+                orig_z.targets[0].data_path = f'data.vertices[{vert_index}].co[2]'
+
+                driver_z.expression = f"orig_z + (empty_z - {original_pos[2]})"
+
+        # Set up drivers for both shoulders
+        setup_shoulder_shape_driver(coat_obj, "Left_Shoulder_Follow", left_shoulder_xyz_empty, left_shoulder_vertices,
+                                    shoulder_influence_radius)
+        setup_shoulder_shape_driver(coat_obj, "Right_Shoulder_Follow", right_shoulder_xyz_empty,
+                                    right_shoulder_vertices, shoulder_influence_radius)
 
         # Create combined pinning group for cloth simulation
         combined_anchors_group = coat_obj.vertex_groups.new(name="Coat_Combined_Anchors")
@@ -4523,104 +4630,8 @@ def create_coat(armature_obj, figure_name):
             if max_weight > 0.1:
                 combined_anchors_group.add([i], max_weight, 'REPLACE')
 
-        # =========================================================================
-        # STEP 8: ADD SHRINKWRAP MODIFIER TO FOLLOW SHOULDER EMPTIES
-        # =========================================================================
-        script_log("DEBUG: Adding shrinkwrap modifier to follow shoulder empties...")
-
-        # Add shrinkwrap to left shoulder
-        left_shrinkwrap = coat_obj.modifiers.new(name="Shrinkwrap_Left_Shoulder", type='SHRINKWRAP')
-        left_shrinkwrap.target = left_shoulder_xyz_empty
-        left_shrinkwrap.wrap_method = 'NEAREST_VERTEX'
-        left_shrinkwrap.wrap_mode = 'OUTSIDE_SURFACE'
-        left_shrinkwrap.offset = 0.001
-        left_shrinkwrap.vertex_group = "Left_Shoulder_XYZ"
-        left_shrinkwrap.invert_vertex_group = False
-
-        # Add shrinkwrap to right shoulder
-        right_shrinkwrap = coat_obj.modifiers.new(name="Shrinkwrap_Right_Shoulder", type='SHRINKWRAP')
-        right_shrinkwrap.target = right_shoulder_xyz_empty
-        right_shrinkwrap.wrap_method = 'NEAREST_VERTEX'
-        right_shrinkwrap.wrap_mode = 'OUTSIDE_SURFACE'
-        right_shrinkwrap.offset = 0.001
-        right_shrinkwrap.vertex_group = "Right_Shoulder_XYZ"
-        right_shrinkwrap.invert_vertex_group = False
-
-        script_log("✓ Added shrinkwrap modifiers to follow shoulder empties")
-
-        # =========================================================================
-        # STEP 9: ADD CLOTH SIMULATION WITH STRONG PINNING
-        # =========================================================================
-        script_log("DEBUG: Adding cloth simulation with strong shoulder pinning...")
-        cloth_config = garment_configs.get("cloth_settings", {})
-
-        if cloth_config.get("enabled", True):
-            cloth_mod = coat_obj.modifiers.new(name="Cloth", type='CLOTH')
-
-            # Apply cloth settings from config
-            cloth_mod.settings.quality = cloth_config.get("quality", 12)
-            cloth_mod.settings.mass = cloth_config.get("mass", 0.3)
-            cloth_mod.settings.tension_stiffness = cloth_config.get("tension_stiffness", 8.0)
-            cloth_mod.settings.compression_stiffness = cloth_config.get("compression_stiffness", 7.0)
-            cloth_mod.settings.shear_stiffness = cloth_config.get("shear_stiffness", 5.0)
-            cloth_mod.settings.bending_stiffness = cloth_config.get("bending_stiffness", 0.8)
-            cloth_mod.settings.air_damping = cloth_config.get("air_damping", 0.8)
-            cloth_mod.settings.time_scale = cloth_config.get("time_scale", 1.0)
-
-            # COLLISIONS
-            cloth_mod.collision_settings.use_collision = True
-            cloth_mod.collision_settings.collision_quality = cloth_config.get("collision_quality", 6)
-            cloth_mod.collision_settings.distance_min = cloth_config.get("external_distance_min", 0.005)
-
-            # Self-collision
-            cloth_mod.collision_settings.use_self_collision = True
-            cloth_mod.collision_settings.self_distance_min = cloth_config.get("self_distance_min", 0.002)
-
-            # PIN COAT TO SHOULDERS USING XYZ EMPTIES
-            cloth_mod.settings.vertex_group_mass = "Coat_Combined_Anchors"
-
-            script_log("✓ Coat cloth: STRONG shoulder pinning using XYZ empties + shrinkwrap")
-        else:
-            script_log("DEBUG: Cloth simulation disabled for coat")
-
-        # =========================================================================
-        # STEP 10: ADD MATERIALS
-        # =========================================================================
-        script_log("DEBUG: Adding coat materials...")
-
-        apply_material_from_config(coat_obj, "coat_torso", material_name="Coat_Material",
-                                   fallback_color=(0.1, 0.3, 0.8, 1.0))
-
-        # =========================================================================
-        # STEP 11: SET MODIFIER ORDER (CRITICAL!)
-        # =========================================================================
-        script_log("DEBUG: Setting modifier order...")
-
-        bpy.context.view_layer.objects.active = coat_obj
-        modifiers = coat_obj.modifiers
-
-        # Build correct order: Shrinkwrap first, then Cloth
-        correct_order = ["Shrinkwrap_Left_Shoulder", "Shrinkwrap_Right_Shoulder"]
-        if cloth_config.get("enabled", True):
-            correct_order.append("Cloth")
-
-        for mod_name in correct_order:
-            mod_index = modifiers.find(mod_name)
-            if mod_index >= 0:
-                while mod_index > correct_order.index(mod_name):
-                    bpy.ops.object.modifier_move_up(modifier=mod_name)
-                    mod_index -= 1
-
-        script_log("✓ Modifier order: Shrinkwrap → Cloth")
-
-        # =========================================================================
-        # STEP 8: ADD ARMATURE MODIFIER
-        # =========================================================================
-        # script_log("DEBUG: Adding armature modifier...")
-
-        # armature_mod = coat_obj.modifiers.new(name="Armature", type='ARMATURE')
-        # armature_mod.object = armature_obj
-        # armature_mod.use_vertex_groups = True
+        script_log(
+            f"✓ Created shape key drivers for {len(left_shoulder_vertices)} left and {len(right_shoulder_vertices)} right shoulder vertices")
 
         # =========================================================================
         # STEP 9: ADD CLOTH SIMULATION WITH STRONG PINNING
@@ -4668,7 +4679,7 @@ def create_coat(armature_obj, figure_name):
             # PIN COAT TO SHOULDERS USING XYZ EMPTIES
             cloth_mod.settings.vertex_group_mass = "Coat_Combined_Anchors"
 
-            script_log("✓ Coat cloth: STRONG shoulder pinning using XYZ empties + shrinkwrap")
+            script_log("✓ Coat cloth: STRONG shoulder pinning using shape key drivers")
         else:
             script_log("DEBUG: Cloth simulation disabled for coat")
 
@@ -4693,8 +4704,8 @@ def create_coat(armature_obj, figure_name):
             modifiers.remove(modifiers["Subdivision"])
             script_log("✓ Removed Subdivision modifier")
 
-        # Build correct order
-        correct_order = ["Armature"]
+        # Build correct order - only Cloth modifier needed since we're using shape keys
+        correct_order = []
         if cloth_config.get("enabled", True):
             correct_order.append("Cloth")
 
@@ -4705,6 +4716,8 @@ def create_coat(armature_obj, figure_name):
                     bpy.ops.object.modifier_move_up(modifier=mod_name)
                     mod_index -= 1
 
+        script_log("✓ Modifier order: Cloth only (shape keys handle shoulder following)")
+
         # =========================================================================
         # STEP 12: FINAL VERIFICATION
         # =========================================================================
@@ -4714,7 +4727,7 @@ def create_coat(armature_obj, figure_name):
         script_log(f"✓ Coat type: {coat_length}")
         script_log(f"✓ Height: {coat_height:.3f}")
         script_log(f"✓ Shoulder width: {shoulder_width:.3f}")
-        script_log(f"✓ Using XYZ empties for strong shoulder pinning")
+        script_log(f"✓ Using shape key drivers for real-time shoulder following")
         script_log(f"✓ Shoulder influence radius: {shoulder_influence_radius:.3f}")
         script_log(f"✓ Cloth simulation: {'ENABLED' if cloth_config.get('enabled', True) else 'DISABLED'}")
 
