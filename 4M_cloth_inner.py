@@ -520,15 +520,44 @@ def load_replaceable_head(blend_file_path, figure_name, armature_obj):
 
         script_log(f"load_replaceable_head Appending from: {blend_file_path}")
 
+        # RESOLVE PATH PROPERLY
+        # If absolute path, use as-is
+        if os.path.isabs(blend_file_path):
+            absolute_path = blend_file_path
+            script_log(f"Using absolute path: {absolute_path}")
+        else:
+            # Use scene-relative path resolution
+            try:
+                from utils import get_scene_paths
+                scene_paths = get_scene_paths(args.show, args.scene)
+                scene_dir = os.path.dirname(scene_paths["output_pose_data"])
+                absolute_path = os.path.join(scene_dir, blend_file_path)
+                script_log(f"Using scene-relative path: {absolute_path}")
+            except Exception as e:
+                script_log(f"Failed to resolve scene-relative path: {e}")
+                # Fallback: try relative to current directory
+                absolute_path = os.path.join(os.getcwd(), blend_file_path)
+                script_log(f"Using fallback path: {absolute_path}")
+
+        script_log(f"Final resolved path: {absolute_path}")
+        script_log(f"File exists: {os.path.exists(absolute_path)}")
+
+        if not os.path.exists(absolute_path):
+            raise FileNotFoundError(f"Head file not found: {absolute_path}")
+
         # Append the head object using naming convention
-        with bpy.data.libraries.load(blend_file_path, link=False) as (data_from, data_to):
+        with bpy.data.libraries.load(absolute_path, link=False) as (data_from, data_to):
             # Look for the standard head mesh name
             if "Head_Mesh" in data_from.objects:
                 data_to.objects = ["Head_Mesh"]
                 script_log("✓ Found Head_Mesh object")
+            elif "Main_Head" in data_from.objects:
+                data_to.objects = ["Main_Head"]
+                script_log("✓ Found Main_Head object")
             else:
                 # Fallback: use first mesh object
-                mesh_objects = [obj for obj in data_from.objects if obj.endswith("Mesh") or obj.startswith("Head")]
+                mesh_objects = [obj for obj in data_from.objects if
+                                obj.endswith("Mesh") or obj.startswith("Head") or "head" in obj.lower()]
                 if mesh_objects:
                     data_to.objects = [mesh_objects[0]]
                     script_log(f"✓ Using fallback mesh: {mesh_objects[0]}")
@@ -540,13 +569,47 @@ def load_replaceable_head(blend_file_path, figure_name, armature_obj):
 
         # Get the appended object
         head_obj = data_to.objects[0]
-        head_obj.name = f"{figure_name}_Head"
+        head_obj.name = f"{figure_name}_Head_Replacement"  # FIXED: Use consistent naming
 
-        # Position at head bone location
-        # head_bone = bpy.context.scene.objects.get(armature_obj.name).pose.bones.get("DEF_Head")
-        # if head_bone:
-        #    head_obj.location = armature_obj.matrix_world @ head_bone.tail
-        #    script_log(f"Positioned head at DEF_Head bone: {head_obj.location}")
+        # DEBUG: Check if head is in scene collections
+        script_log(f"DEBUG: Head created: {head_obj.name}")
+        script_log(f"DEBUG: Head in scene: {head_obj.name in bpy.context.scene.objects}")
+        script_log(f"DEBUG: Head collections: {[coll.name for coll in head_obj.users_collection]}")
+
+        # ENSURE HEAD IS IN A COLLECTION
+        if not head_obj.users_collection:
+            script_log("DEBUG: Head not in any collection, adding to main collection")
+            bpy.context.scene.collection.objects.link(head_obj)
+            script_log(f"DEBUG: Head collections after linking: {[coll.name for coll in head_obj.users_collection]}")
+
+        # UNCOMMENT AND FIX POSITIONING:
+        head_bone = armature_obj.pose.bones.get("DEF_Head")
+        if head_bone:
+            # Reset scale first
+            head_obj.scale = (1.0, 1.0, 1.0)
+
+            # Position at head bone (use head instead of tail for better positioning)
+            head_obj.location = armature_obj.matrix_world @ head_bone.head - Vector((0, 0, 0.1))
+            script_log(f"✓ Positioned head at DEF_Head bone: {head_obj.location}")
+
+        # APPLY SCALE FROM CONFIG:
+        replaceable_config = garment_configs.get("garment_head", {}).get("replaceable_head", {})
+        scale_factor = replaceable_config.get("scale_factor", 1.0)
+        head_obj.scale = (scale_factor, scale_factor, scale_factor)
+        script_log(f"✓ Applied scale factor: {scale_factor}")
+
+        # ENSURE VISIBILITY:
+        head_obj.hide_set(False)
+        head_obj.hide_viewport = False
+        head_obj.hide_render = False
+
+        # Force viewport update
+        bpy.context.view_layer.update()
+
+        # DEBUG: Final check
+        script_log(f"DEBUG: Final - Head in scene: {head_obj.name in bpy.context.scene.objects}")
+        script_log(f"DEBUG: Final - Head collections: {[coll.name for coll in head_obj.users_collection]}")
+        script_log(f"DEBUG: Final - Head dimensions: {head_obj.dimensions}")
 
         # Materials are automatically appended with the object
         script_log(f"Head object materials: {[mat.name for mat in head_obj.data.materials]}")
@@ -555,9 +618,12 @@ def load_replaceable_head(blend_file_path, figure_name, armature_obj):
 
     except Exception as e:
         script_log(f"Failed to load replaceable head: {e}")
+        import traceback
+        script_log(f"Traceback: {traceback.format_exc()}")
         # Clean up any partially appended objects
         if 'data_to' in locals() and data_to.objects:
             for obj in data_to.objects:
+                script_log(f"DEBUG: Cleaning up object: {obj.name}")
                 bpy.data.objects.remove(obj, do_unlink=True)
         return None
 
@@ -950,53 +1016,364 @@ def save_hero_head(head_obj, export_path, armature_obj, garment_config):
 ##########################################################################################
 
 def create_head(armature_obj, figure_name, garment_config, global_cloth_settings, neck_config=None):
-    """Create head - either procedural or from replaceable asset with template export"""
-    script_log("=== HEAD CREATION STARTED (REPLACEABLE SYSTEM) ===")
+    """Create head - either procedural or from replaceable asset with template export - UPDATED WITH NEW VERTEX BUNDLES SYSTEM"""
+    script_log("=== HEAD CREATION STARTED (NEW VERTEX BUNDLES SYSTEM) ===")
 
-    # STEP 1: Ensure nose control point exists
-    def ensure_nose_control_point_safe():
-        """Safe version that doesn't require frame data"""
+    # =========================================================================
+    # STEP 1: ENSURE NOSE CONTROL POINT EXISTS FIRST (CRITICAL FOR SAFETY)
+    # =========================================================================
+    script_log("STEP 1: Ensuring NOSE control point exists for safe constraint setup...")
+
+    # Make sure we have access to frame data
+    if not hasattr(bpy.context, 'frame_numbers') or not hasattr(bpy.context, 'mocap_data'):
+        script_log("⚠ WARNING: Missing frame data context, using default nose position")
+        first_frame = {}
+    else:
+        first_frame = bpy.context.mocap_data.get(str(bpy.context.frame_numbers[0]), {})
+
+    def ensure_nose_control_point_safe(first_frame):
+        """Guarantee CTRL_NOSE exists and is positioned correctly - SAFE VERSION"""
         script_log("Ensuring NOSE control point exists...")
 
         nose_obj = bpy.data.objects.get("CTRL_NOSE")
 
         if not nose_obj:
-            script_log("Creating CTRL_NOSE control point at default position...")
-            bpy.ops.object.empty_add(type='PLAIN_AXES', location=(0, 0, 1.35))
-            nose_obj = bpy.context.active_object
-            nose_obj.name = "CTRL_NOSE"
+            script_log("Creating CTRL_NOSE control point from landmark data...")
+            # Create from landmark data
+            if "NOSE" in first_frame:
+                pos_data = first_frame["NOSE"]
+                nose_pos = Vector((pos_data["x"], pos_data["y"], pos_data["z"]))
 
-            # Add to control collection
-            control_coll = bpy.data.collections.get("Main_ControlPoints")
-            if control_coll:
-                control_coll.objects.link(nose_obj)
+                bpy.ops.object.empty_add(type='PLAIN_AXES', location=nose_pos)
+                nose_obj = bpy.context.active_object
+                nose_obj.name = "CTRL_NOSE"
+
+                # Add to control collection
+                control_coll = bpy.data.collections.get("Main_ControlPoints")
+                if control_coll:
+                    control_coll.objects.link(nose_obj)
+                else:
+                    # Create collection if it doesn't exist
+                    control_coll = bpy.data.collections.new("Main_ControlPoints")
+                    bpy.context.scene.collection.children.link(control_coll)
+                    control_coll.objects.link(nose_obj)
+
+                script_log(f"✓ Created CTRL_NOSE at {nose_pos}")
             else:
-                # Create collection if it doesn't exist
-                control_coll = bpy.data.collections.new("Main_ControlPoints")
-                bpy.context.scene.collection.children.link(control_coll)
-                control_coll.objects.link(nose_obj)
-
-            script_log(f"✓ Created CTRL_NOSE at {nose_obj.location}")
+                script_log("⚠ WARNING: NOSE landmark not found in frame data, creating at default position")
+                bpy.ops.object.empty_add(type='PLAIN_AXES', location=(0, 0, 1.35))
+                nose_obj = bpy.context.active_object
+                nose_obj.name = "CTRL_NOSE"
         else:
             script_log(f"✓ Using existing CTRL_NOSE at {nose_obj.location}")
 
         return nose_obj
 
+    def setup_head_constraints_safe(armature_obj, head_bone_name):
+        """Safe head constraint setup without recursion - PORCELAIN DOLL architecture"""
+        script_log(f"Setting up safe head constraints for {head_bone_name}...")
+
+        bpy.context.view_layer.objects.active = armature_obj
+        bpy.ops.object.mode_set(mode='POSE')
+
+        head_bone = armature_obj.pose.bones[head_bone_name]
+
+        # 1. CLEAR ALL existing constraints first (prevent conflicts)
+        for constraint in list(head_bone.constraints):
+            head_bone.constraints.remove(constraint)
+        script_log("✓ Cleared existing head constraints")
+
+        # 2. LOCATION: Anchor to neck (bottom connection - porcelain doll base)
+        neck_bone = armature_obj.pose.bones.get("DEF_Neck")
+        if neck_bone:
+            copy_loc = head_bone.constraints.new('COPY_LOCATION')
+            copy_loc.target = armature_obj
+            copy_loc.subtarget = "DEF_Neck"
+            copy_loc.use_offset = True  # Maintain head's local position relative to neck
+            copy_loc.influence = 1.0
+            script_log("✓ Head COPY_LOCATION -> DEF_Neck (porcelain doll anchor)")
+
+        # 3. ROTATION: Damped track to NOSE control point (facing direction)
+        nose_obj = bpy.data.objects.get("CTRL_NOSE")
+        if nose_obj:
+            track = head_bone.constraints.new('DAMPED_TRACK')
+            track.name = "Track_Nose_Direction"
+            track.target = nose_obj
+            track.track_axis = 'TRACK_Y'  # Head Y-axis faces nose
+            track.influence = 1.0
+            script_log("✓ Head DAMPED_TRACK -> CTRL_NOSE (facing direction)")
+
+            # 4. ROTATION LIMITS: Prevent extreme angles for stability
+            limit_rot = head_bone.constraints.new('LIMIT_ROTATION')
+            limit_rot.name = "Limit_Head_Rotation"
+            limit_rot.use_limit_x = True
+            limit_rot.min_x = -0.5  # Limited head tilt (nodding)
+            limit_rot.max_x = 0.5
+            limit_rot.use_limit_y = True
+            limit_rot.min_y = -1.5  # Head turn (looking left/right)
+            limit_rot.max_y = 1.5
+            limit_rot.use_limit_z = True
+            limit_rot.min_z = -0.3  # Head roll (ear to shoulder)
+            limit_rot.max_z = 0.3
+            limit_rot.owner_space = 'LOCAL'
+            script_log("✓ Added natural head rotation limits")
+        else:
+            script_log("⚠ WARNING: CTRL_NOSE not found, head rotation will be neutral")
+
+        bpy.ops.object.mode_set(mode='OBJECT')
+        script_log("✓ Safe head constraints setup complete")
+
+    def get_bundle_center(bundle_name):
+        """Get bundle center position - FALLBACK IMPLEMENTATION"""
+        # Try to get from control points first
+        ctrl_obj = bpy.data.objects.get(bundle_name)
+        if ctrl_obj:
+            return ctrl_obj.location
+
+        # Fallback positions based on bundle name
+        if bundle_name == "CTRL_HEAD_TOP":
+            # Estimate head top position
+            head_bone = armature_obj.pose.bones.get("DEF_Head")
+            if head_bone:
+                return armature_obj.matrix_world @ head_bone.tail
+        elif bundle_name == "CTRL_NOSE":
+            nose_obj = bpy.data.objects.get("CTRL_NOSE")
+            if nose_obj:
+                return nose_obj.location
+
+        # Final fallback
+        script_log(f"⚠ WARNING: Bundle {bundle_name} not found, using zero vector")
+        return Vector((0, 0, 0))
+
+    def get_bundle_radius(bundle_name):
+        """Get bundle radius - FALLBACK IMPLEMENTATION"""
+        # Default radii based on bundle type
+        if bundle_name == "CTRL_HEAD_TOP":
+            return 0.08
+        elif bundle_name == "CTRL_NOSE":
+            return 0.05
+        else:
+            return 0.05
+
+    # CREATE NOSE CONTROL POINT BEFORE ANYTHING ELSE
+    nose_obj = ensure_nose_control_point_safe(first_frame)
+
+    # =========================================================================
+    # STEP 2: CREATE PROCEDURAL HEAD FIRST (needed for export or fallback)
+    # =========================================================================
+    script_log("STEP 2: Creating procedural head with safe constraints...")
+
     def create_procedural_head_safe(armature_obj, figure_name, garment_config, global_cloth_settings, neck_config=None):
-        """Safe wrapper around existing procedural head function"""
+        """Create human-like head with coordinated vertex bundles for seamless neck integration"""
+        script_log("Creating procedural garment_head with coordinated vertex bundles and safe constraints...")
+
+        # Get head bone position
+        bpy.context.view_layer.objects.active = armature_obj
+        bpy.ops.object.mode_set(mode='POSE')
+
         try:
-            # Use your existing working function
-            return create_procedural_head(armature_obj, figure_name, garment_config, global_cloth_settings, neck_config)
+            head_bone = armature_obj.pose.bones.get("DEF_Head")
+            neck_bone = armature_obj.pose.bones.get("DEF_Neck")
+            head_bone_name = "DEF_Head"
+            neck_bone_name = "DEF_Neck"
+
+            bpy.ops.object.mode_set(mode='OBJECT')
+
+            if not head_bone:
+                script_log("ERROR: Could not find head bone")
+                return None
+
+            # Get head bone positions in world space
+            head_base_pos = armature_obj.matrix_world @ head_bone.head
+            head_top_pos = armature_obj.matrix_world @ head_bone.tail
+
+            # Get head dimensions from config
+            scale = garment_config.get("scale", [0.25, 0.28, 0.3])
+            position_offset = garment_config.get("position_offset", [0.0, 0.0, 0.0])
+            rotation_offset = garment_config.get("rotation_offset", [0.0, 0.0, 0.0])
+            neck_connection_radius = garment_config.get("neck_connection_radius", 0.08)
+            subdivision_levels = garment_config.get("subdivision_levels", 3)
+
+            # Get geometry settings from config
+            geometry_settings = global_cloth_settings.get("geometry_settings", {})
+            head_segments = geometry_settings.get("head_segments", 32)
+            head_ring_count = geometry_settings.get("head_ring_count", 24)
+            base_radii = global_cloth_settings.get("base_radii", {})
+            head_base_radius = base_radii.get("head", 0.25)
+
+            # Get head-neck bundle diameter
+            head_neck_diameter = garment_config.get("diameter_neck", 0.16)
+
+            # Get head-neck bundle center
+            head_neck_center = get_bundle_center("CTRL_HEAD_TOP")
+            head_neck_radius = get_bundle_radius("CTRL_HEAD_TOP")
+
+            # Fallback if head bundle not available
+            if not head_neck_center or head_neck_center.length == 0:
+                script_log("⚠ Head-neck vertex bundle not found, using calculated position")
+                head_neck_center = head_top_pos
+                head_neck_radius = head_neck_diameter / 2
+
+            script_log(f"DEBUG: Procedural head scale: {scale}")
+            script_log(f"DEBUG: Head bone - base: {head_base_pos}, top: {head_top_pos}")
+            script_log(f"DEBUG: Head-neck bundle center: {head_neck_center}")
+
+            # =========================================================================
+            # STEP 1: CREATE HEAD MESH
+            # =========================================================================
+            script_log("DEBUG: Creating procedural head as UV sphere...")
+
+            # Make sure we're in object mode
+            bpy.ops.object.mode_set(mode='OBJECT')
+            bpy.ops.object.select_all(action='DESELECT')
+
+            # Create head at the TOP of the head bone (where the head should be)
+            head_location = head_top_pos + Vector(position_offset)
+
+            bpy.ops.mesh.primitive_uv_sphere_add(
+                segments=head_segments,
+                ring_count=head_ring_count,
+                radius=head_base_radius,
+                location=head_location
+            )
+            head_obj = bpy.context.active_object
+            head_obj.name = f"{figure_name}_Head"
+            head_obj.data.name = f"{figure_name}_Head_Mesh"
+
+            # Apply scaling
+            head_obj.scale = Vector(scale)
+
+            # Apply rotation if specified
+            if any(rotation_offset):
+                head_obj.rotation_euler = Vector(rotation_offset)
+
+            # =========================================================================
+            # STEP 2: SIMPLE HEAD SHAPING
+            # =========================================================================
+            script_log("DEBUG: Applying basic head shaping...")
+
+            # Use simple scaling instead of complex bmesh operations
+            bpy.context.view_layer.objects.active = head_obj
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.mesh.select_all(action='SELECT')
+
+            # Simple scale to make head more oval-shaped
+            bpy.ops.transform.resize(value=(1.1, 0.9, 1.2))  # Wider, slightly flatter, taller
+
+            bpy.ops.object.mode_set(mode='OBJECT')
+
+            # =========================================================================
+            # STEP 3: SETUP VERTEX GROUPS
+            # =========================================================================
+            script_log("DEBUG: Setting up head vertex groups...")
+
+            # Clear any existing vertex groups
+            for vg in list(head_obj.vertex_groups):
+                head_obj.vertex_groups.remove(vg)
+
+            # Remove any existing armature modifiers
+            for mod in list(head_obj.modifiers):
+                if mod.type == 'ARMATURE':
+                    head_obj.modifiers.remove(mod)
+
+            # Create vertex group for head bone
+            head_group = head_obj.vertex_groups.new(name=head_bone_name)
+
+            # Simple vertex weighting: assign all vertices to head bone
+            for i in range(len(head_obj.data.vertices)):
+                head_group.add([i], 1.0, 'REPLACE')
+
+            # =========================================================================
+            # STEP 4: ADD ARMATURE MODIFIER
+            # =========================================================================
+            # script_log("DEBUG: Adding armature modifier...")
+
+            # armature_mod = head_obj.modifiers.new(name="Armature", type='ARMATURE')
+            # armature_mod.object = armature_obj
+            # armature_mod.use_vertex_groups = True
+
+            # =========================================================================
+            # STEP 5: ADD SUBDIVISION AND MATERIALS (FIXED)
+            # =========================================================================
+            script_log("DEBUG: Adding subdivision and skin material...")
+
+            # Add subdivision
+            subdiv_mod = head_obj.modifiers.new(name="Subdivision", type='SUBSURF')
+            subdiv_mod.levels = subdivision_levels
+            subdiv_mod.render_levels = subdivision_levels
+
+            # Create skin material - FIXED VERSION
+            material_config = garment_config.get("material", {})
+            material_color = material_config.get("color", [0.96, 0.86, 0.72, 1.0])
+
+            head_mat = bpy.data.materials.new(name="Head_Material")
+            head_mat.use_nodes = True
+
+            # Clear default nodes
+            head_mat.node_tree.nodes.clear()
+
+            # Create simple Principled BSDF setup
+            output_node = head_mat.node_tree.nodes.new(type='ShaderNodeOutputMaterial')
+            principled_node = head_mat.node_tree.nodes.new(type='ShaderNodeBsdfPrincipled')
+
+            # Position nodes
+            output_node.location = (300, 0)
+            principled_node.location = (0, 0)
+
+            # Connect nodes
+            head_mat.node_tree.links.new(principled_node.outputs['BSDF'], output_node.inputs['Surface'])
+
+            # Set material properties - FIXED INPUT NAMES
+            principled_node.inputs['Base Color'].default_value = material_color
+            principled_node.inputs['Roughness'].default_value = material_config.get("roughness", 0.4)
+            principled_node.inputs['Metallic'].default_value = material_config.get("metallic", 0.0)
+
+            # Use correct input names for subsurface scattering
+            # Check which subsurface inputs are available in this Blender version
+            available_inputs = [input.name for input in principled_node.inputs]
+            script_log(f"DEBUG: Available Principled BSDF inputs: {available_inputs}")
+
+            # Set subsurface scattering if available
+            if 'Subsurface' in available_inputs:
+                # Blender 2.8-3.x style
+                principled_node.inputs['Subsurface'].default_value = material_config.get("subsurface", 0.1)
+                principled_node.inputs['Subsurface Color'].default_value = material_config.get("subsurface_color",
+                                                                                               [0.96, 0.78, 0.64, 1.0])
+            elif 'Subsurface IOR' in available_inputs:
+                # Blender 4.x style - subsurface is controlled differently
+                # Just set base color and skip subsurface for compatibility
+                script_log("DEBUG: Subsurface scattering not available in this Blender version, using base color only")
+
+            head_obj.data.materials.append(head_mat)
+
+            # =========================================================================
+            # STEP 6: SETUP HEAD CONSTRAINTS
+            # =========================================================================
+            script_log("DEBUG: Setting up head bone constraints...")
+            setup_head_constraints_safe(armature_obj, head_bone_name)
+
+            # =========================================================================
+            # STEP 7: FINAL SETUP
+            # =========================================================================
+            bpy.context.view_layer.update()
+
+            script_log("=== PROCEDURAL HEAD CREATION COMPLETE ===")
+            script_log(f"✓ Head created at: {head_location}")
+            script_log(f"✓ Head scale: {scale}")
+            script_log(f"✓ Materials applied: {len(head_obj.data.materials)}")
+            script_log(f"✓ Vertex groups: {[vg.name for vg in head_obj.vertex_groups]}")
+            script_log(f"✓ Modifiers: {[mod.name for mod in head_obj.modifiers]}")
+
+            return head_obj
+
         except Exception as e:
-            script_log(f"ERROR in create_procedural_head_safe: {e}")
+            script_log(f"ERROR creating procedural head: {e}")
             import traceback
             script_log(f"Traceback: {traceback.format_exc()}")
+            bpy.ops.object.mode_set(mode='OBJECT')
             return None
 
-    nose_obj = ensure_nose_control_point_safe()
-
-    # STEP 2: Create procedural head first (needed for export or fallback)
-    script_log("STEP 2: Creating procedural head...")
+    # CREATE PROCEDURAL HEAD
     procedural_head = create_procedural_head_safe(armature_obj, figure_name, garment_config, global_cloth_settings,
                                                   neck_config)
 
@@ -1004,7 +1381,9 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
         script_log("ERROR: Failed to create procedural head")
         return None
 
+    # =========================================================================
     # STEP 3: REPLACEABLE HEAD SYSTEM - IMPLEMENTED
+    # =========================================================================
     replaceable_config = garment_config.get("replaceable_head", {})
 
     # EXPORT TEMPLATE MODE
@@ -1030,7 +1409,10 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
         # Continue with procedural head in scene
         return procedural_head
 
-    # LOAD REPLACEABLE HEAD MODE
+    # =========================================================================
+    # STEP 4: LOAD REPLACEABLE HEAD
+    # =========================================================================
+
     if replaceable_config.get("enabled", False):
         script_log("STEP 4: LOADING REPLACEABLE HEAD...")
         blend_file_path = replaceable_config.get("blend_file", "assets/hero_head.blend")
@@ -1057,172 +1439,90 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
             script_log("✓ Falling back to procedural head")
             return procedural_head
 
-    # STEP 5: Default to procedural head
-    script_log("STEP 5: Using procedural head (default)")
+    # =========================================================================
+    # STEP 5: FINAL VERIFICATION
+    # =========================================================================
+    script_log("STEP 5: Final head verification...")
+
+    # Verify the head is properly set up
+    bpy.context.view_layer.update()
+
+    has_armature_mod = any(mod.type == 'ARMATURE' for mod in procedural_head.modifiers)
+    has_vertex_groups = len(procedural_head.vertex_groups) > 0
+    has_materials = len(procedural_head.data.materials) > 0
+    is_visible = procedural_head.visible_get()
+
+    script_log("=== HEAD VERIFICATION ===")
+    script_log(f"✓ Armature modifier: {'PRESENT' if has_armature_mod else 'MISSING'}")
+    script_log(f"✓ Vertex groups: {'PRESENT' if has_vertex_groups else 'MISSING'}")
+    script_log(f"✓ Materials: {'PRESENT' if has_materials else 'MISSING'}")
+    script_log(f"✓ Visible in viewport: {'YES' if is_visible else 'NO'}")
+    script_log(f"✓ Head object: {procedural_head.name}")
+    script_log(f"✓ Head location: {procedural_head.location}")
+
+    if not is_visible:
+        script_log("⚠ WARNING: Head is not visible! Checking collections...")
+        # Make sure head is in a visible collection
+        for collection in procedural_head.users_collection:
+            script_log(f"  - In collection: {collection.name}, visible: {collection.hide_viewport}")
+            if collection.hide_viewport:
+                collection.hide_viewport = False
+                script_log(f"  - Made collection '{collection.name}' visible")
+
+    script_log("=== HEAD CREATION COMPLETE ===")
     return procedural_head
 
 ##########################################################################################
 
 def save_hero_head_template(head_obj, export_path, armature_obj, garment_config):
-    """Export procedural head as a template .blend file with standardized naming"""
-    script_log(f"=== EXPORTING HERO HEAD TEMPLATE: {export_path} ===")
+    """Minimal approach - save only selected objects"""
+    script_log(f"=== EXPORTING HEAD TEMPLATE (MINIMAL): {export_path} ===")
 
-    # Save current selection state
-    previous_active = bpy.context.active_object
+    # Save current selection
     previous_selected = bpy.context.selected_objects.copy()
+    previous_active = bpy.context.active_object
 
     try:
-        # Create a duplicate of the head for export
+        # Select ONLY the head
         bpy.ops.object.select_all(action='DESELECT')
         head_obj.select_set(True)
         bpy.context.view_layer.objects.active = head_obj
-        bpy.ops.object.duplicate()
-
-        export_head = bpy.context.active_object
-        export_head.name = "Head_Mesh"  # Standardized name
-
-        # Clean up the export head
-        script_log("Cleaning up export head...")
-
-        # Remove armature modifier (keep geometry only)
-        for mod in list(export_head.modifiers):
-            if mod.type == 'ARMATURE':
-                export_head.modifiers.remove(mod)
-
-        # Clear vertex groups (artist will create their own)
-        for vg in list(export_head.vertex_groups):
-            export_head.vertex_groups.remove(vg)
-
-        # Reset transformations
-        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-
-        # Ensure we have a UV map
-        if not export_head.data.uv_layers:
-            script_log("Creating default UV map...")
-            export_head.data.uv_layers.new(name="UVMap")
-
-        # Apply smart UV project
-        bpy.context.view_layer.objects.active = export_head
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.uv.smart_project(
-            angle_limit=math.radians(66),
-            island_margin=0.02,
-            area_weight=1.0,
-            correct_aspect=True,
-            scale_to_bounds=True
-        )
-        bpy.ops.object.mode_set(mode='OBJECT')
-        script_log("✓ Applied smart UV projection")
-
-        # Create collection for organization
-        if "Hero_Head_Assets" not in bpy.data.collections:
-            head_collection = bpy.data.collections.new("Hero_Head_Assets")
-            bpy.context.scene.collection.children.link(head_collection)
-        else:
-            head_collection = bpy.data.collections["Hero_Head_Assets"]
-
-        # Move head to collection
-        if export_head.name in bpy.context.scene.collection.objects:
-            bpy.context.scene.collection.objects.unlink(export_head)
-        head_collection.objects.link(export_head)
-
-        # Add metadata
-        export_head["is_hero_head_template"] = True
-        export_head["export_version"] = "1.0"
-        export_head["original_scale"] = list(export_head.scale)
-        export_head["recommended_scale"] = 1.0
 
         # Ensure directory exists
         os.makedirs(os.path.dirname(export_path), exist_ok=True)
 
-        # Select only the head for export
-        bpy.ops.object.select_all(action='DESELECT')
-        export_head.select_set(True)
-        bpy.context.view_layer.objects.active = export_head
-
-        # Save as new blend file
+        # Save only selected objects
         bpy.ops.wm.save_as_mainfile(
             filepath=export_path,
             check_existing=False,
-            compress=True
+            compress=True,
+            copy=True  # This creates a copy instead of moving
         )
 
-        script_log(f"✓ Successfully exported hero head template: {export_path}")
+        script_log(f"✓ Exported head template (selected objects only): {export_path}")
 
-        # Clean up - delete temporary export object
+        # Restore selection
         bpy.ops.object.select_all(action='DESELECT')
-        export_head.select_set(True)
-        bpy.ops.object.delete()
-
-        # Restore original selection
-        if previous_active:
-            bpy.context.view_layer.objects.active = previous_active
         for obj in previous_selected:
-            obj.select_set(True)
+            if obj.name in bpy.data.objects:
+                obj.select_set(True)
+        if previous_active and previous_active.name in bpy.data.objects:
+            bpy.context.view_layer.objects.active = previous_active
 
         return True
 
     except Exception as e:
-        script_log(f"ERROR: Failed to export hero head template: {e}")
-        import traceback
-        script_log(f"Traceback: {traceback.format_exc()}")
+        script_log(f"ERROR in minimal export: {e}")
+        # Restore selection on error
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in previous_selected:
+            if obj.name in bpy.data.objects:
+                obj.select_set(True)
+        if previous_active and previous_active.name in bpy.data.objects:
+            bpy.context.view_layer.objects.active = previous_active
         return False
 
-##########################################################################################
-
-def load_replaceable_head(blend_file_path, figure_name, armature_obj):
-    """Append head mesh from external .blend file"""
-    try:
-        # Resolve path
-        absolute_path = resolve_head_file_path(blend_file_path)
-
-        script_log(f"Loading replaceable head from: {absolute_path}")
-
-        # Save current selection
-        previous_active = bpy.context.active_object
-        previous_selected = bpy.context.selected_objects.copy()
-
-        # Append the head object
-        with bpy.data.libraries.load(absolute_path, link=False) as (data_from, data_to):
-            # Look for head mesh objects
-            head_objects = [obj for obj in data_from.objects if "head" in obj.lower() or "Head" in obj]
-            if head_objects:
-                data_to.objects = [head_objects[0]]
-                script_log(f"✓ Found head object: {head_objects[0]}")
-            else:
-                # Fallback: use first mesh object
-                mesh_objects = [obj for obj in data_from.objects if obj.endswith("Mesh")]
-                if mesh_objects:
-                    data_to.objects = [mesh_objects[0]]
-                    script_log(f"✓ Using fallback mesh: {mesh_objects[0]}")
-                else:
-                    raise Exception("No suitable head mesh found in blend file")
-
-        if not data_to.objects:
-            raise Exception("No objects appended from blend file")
-
-        # Get the appended object
-        head_obj = data_to.objects[0]
-        head_obj.name = f"{figure_name}_Head_Replacement"
-
-        # Position at head bone location
-        head_bone = armature_obj.pose.bones.get("DEF_Head")
-        if head_bone:
-            head_obj.location = armature_obj.matrix_world @ head_bone.tail
-
-        script_log(f"✓ Loaded replaceable head: {head_obj.name}")
-        return head_obj
-
-    except Exception as e:
-        script_log(f"Failed to load replaceable head: {e}")
-        # Clean up any partially appended objects
-        if 'data_to' in locals() and data_to.objects:
-            for obj in data_to.objects:
-                bpy.data.objects.remove(obj, do_unlink=True)
-        return None
-
-##########################################################################################
+##################################################################################################################################################################################
 
 def resolve_head_file_path(blend_file_path):
     """Resolve scene-relative paths for head .blend files"""

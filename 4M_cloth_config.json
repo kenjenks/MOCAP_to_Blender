@@ -214,7 +214,7 @@
       },
       "replaceable_head": {
         "enabled": true,
-        "export_template": true,
+        "export_template": false,
         "export_path": "assets/hero_head_template.blend",
         "blend_file": "assets/hero_head.blend",
         "scale_factor": 1.0,
@@ -222,7 +222,7 @@
         "rotation_offset": [0.0, 0.0, 0.0],
         "vertex_group_cleanup": true
       },
-      "fallback_to_procedural": true
+      "fallback_to_procedural": false
     },
     "garment_neck": {
       "enabled": true,
