@@ -2436,13 +2436,13 @@ def create_neck(armature_obj, figure_name, garment_config, global_cloth_settings
         spine_top_pos = armature_obj.matrix_world @ upper_spine_bone.tail  # Top of spine
 
         # Get neck dimensions from config
-        puffiness = garment_configs.get("puffiness", 1.1)
-        neck_height = garment_configs.get("neck_height", 0.08)
-        neck_diameter = garment_configs.get("neck_diameter", 0.14)
-        collar_style = garment_configs.get("collar_style", "turtleneck")
+        puffiness = garment_config.get("puffiness", 1.1)
+        neck_height = garment_config.get("neck_height", 0.08)
+        neck_diameter = garment_config.get("neck_diameter", 0.14)
+        collar_style = garment_config.get("collar_style", "turtleneck")
 
         # Get neck-shoulder bundle diameter from config
-        neck_spine_diameter = garment_configs.get("diameter_spine", 0.18)  # Diameter at neck-spine-shoulder junction
+        neck_spine_diameter = garment_config.get("diameter_spine", 0.18)
 
         # Get geometry settings
         geometry_settings = global_cloth_settings.get("geometry_settings", {})
@@ -2480,9 +2480,9 @@ def create_neck(armature_obj, figure_name, garment_config, global_cloth_settings
         neck_obj.rotation_euler = neck_direction.to_track_quat('Z', 'Y').to_euler()
 
         # =========================================================================
-        # STEP 2: SETUP VERTEX GROUPS WITH NEW VERTEX BUNDLE SYSTEM
+        # STEP 2: SETUP VERTEX GROUPS WITH FIXED BUNDLE SYSTEM
         # =========================================================================
-        script_log("DEBUG: Setting up neck vertex groups with NEW vertex bundle system...")
+        script_log("DEBUG: Setting up neck vertex groups with FIXED bundle system...")
 
         # Clear any existing parenting
         neck_obj.parent = None
@@ -2497,41 +2497,30 @@ def create_neck(armature_obj, figure_name, garment_config, global_cloth_settings
                 neck_obj.modifiers.remove(mod)
 
         # =========================================================================
-        # NEW VERTEX BUNDLE SYSTEM: Get bundle centers and radii
+        # FIXED BUNDLE SYSTEM: Use actual bone positions instead of control points
         # =========================================================================
-        script_log("DEBUG: Using NEW vertex bundle system for neck...")
+        script_log("DEBUG: Using FIXED bundle system for neck...")
 
-        # Get bundle centers from new system
-        head_neck_center = get_bundle_center("CTRL_HEAD_TOP")  # Head-neck junction
-        neck_spine_center = get_bundle_center("CTRL_NOSE")     # Neck-spine-shoulder junction
+        # Use actual bone positions instead of control points
+        head_neck_center = neck_top_pos  # Top of neck (head base)
+        neck_spine_center = neck_base_pos  # Base of neck (shoulders)
 
-        # Get bundle radii for influence calculation
-        head_neck_radius = get_bundle_radius("CTRL_HEAD_TOP")
-        neck_spine_radius = get_bundle_radius("CTRL_NOSE")
+        # Calculate appropriate radii
+        head_neck_radius = neck_diameter / 2 * 1.2  # Slightly larger than neck radius
+        neck_spine_radius = neck_spine_diameter / 2  # Use the configured spine diameter
 
-        # Fallback if bundle centers not available
-        if not head_neck_center:
-            script_log("⚠ Head-neck vertex bundle not found, using calculated position")
-            head_neck_center = neck_top_pos
-            head_neck_radius = neck_spine_diameter / 2 * 0.8
-
-        if not neck_spine_center:
-            script_log("⚠ Neck-spine vertex bundle not found, using calculated position")
-            neck_spine_center = neck_base_pos
-            neck_spine_radius = neck_spine_diameter / 2
-
-        script_log(f"✓ Using new vertex bundle system:")
+        script_log(f"✓ Using FIXED bundle system:")
         script_log(f"  - Head-neck: {head_neck_center}, radius: {head_neck_radius}")
         script_log(f"  - Neck-spine: {neck_spine_center}, radius: {neck_spine_radius}")
 
-        # Create vertex groups for all three coordination points
+        # Create vertex groups
         neck_group = neck_obj.vertex_groups.new(name=neck_bone_name)
         head_coordination_group = neck_obj.vertex_groups.new(name="Head_Coordination_Neck")
         spine_coordination_group = neck_obj.vertex_groups.new(name="Spine_Coordination_Neck")
 
         # Calculate bundle radii for influence
-        head_neck_sphere_radius = head_neck_radius * 2.0  # Double radius for influence area
-        neck_spine_sphere_radius = neck_spine_radius * 2.0
+        head_neck_sphere_radius = head_neck_radius * 1.5  # Influence area
+        neck_spine_sphere_radius = neck_spine_radius * 1.5
 
         # =========================================================================
         # STEP 3: APPLY HEAD-NECK BUNDLE WEIGHTS (TOP OF NECK)
@@ -2601,10 +2590,31 @@ def create_neck(armature_obj, figure_name, garment_config, global_cloth_settings
         script_log(f"✓ Applied neck-spine bundle to {neck_spine_vertices} vertices")
 
         # =========================================================================
-        # STEP 5: ADD DYNAMIC VERTEX WEIGHTING
+        # STEP 5: SIMPLIFIED DYNAMIC VERTEX WEIGHTING (FIXED)
         # =========================================================================
-        script_log("DEBUG: Adding dynamic vertex weighting to neck...")
-        neck_obj = setup_garment_dynamic_weighting(neck_obj, "center", "neck")
+        script_log("DEBUG: Adding simplified dynamic vertex weighting to neck...")
+
+        # Create a simple dynamic weighting system that doesn't rely on external functions
+        dynamic_weight_group = neck_obj.vertex_groups.new(name="Dynamic_Weight_Neck")
+
+        for i, vertex in enumerate(neck_obj.data.vertices):
+            vert_pos = neck_obj.matrix_world @ vertex.co
+
+            # Calculate distance to both bundle centers
+            dist_to_head = (vert_pos - head_neck_center).length
+            dist_to_spine = (vert_pos - neck_spine_center).length
+
+            # Calculate weights based on proximity to bundles
+            head_weight = max(0, 1.0 - (dist_to_head / head_neck_sphere_radius))
+            spine_weight = max(0, 1.0 - (dist_to_spine / neck_spine_sphere_radius))
+
+            # Use the stronger of the two weights
+            dynamic_weight = max(head_weight, spine_weight)
+
+            if dynamic_weight > 0.1:
+                dynamic_weight_group.add([i], dynamic_weight, 'REPLACE')
+
+        script_log("✓ Added simplified dynamic vertex weighting")
 
         # =========================================================================
         # STEP 6: ADD ARMATURE MODIFIER
@@ -2620,7 +2630,7 @@ def create_neck(armature_obj, figure_name, garment_config, global_cloth_settings
         # STEP 7: ADD CLOTH SIMULATION FOR STRETCHY FABRIC
         # =========================================================================
         script_log("DEBUG: Adding stretchy cloth simulation to neck...")
-        cloth_settings = garment_configs.get("cloth_settings", {})
+        cloth_settings = garment_config.get("cloth_settings", {})
 
         if cloth_settings.get("enabled", True):
             cloth_mod = neck_obj.modifiers.new(name="Cloth", type='CLOTH')
@@ -2632,7 +2642,7 @@ def create_neck(armature_obj, figure_name, garment_config, global_cloth_settings
             cloth_mod.settings.bending_stiffness = cloth_settings.get("bending_stiffness", 0.5)
             cloth_mod.settings.air_damping = cloth_settings.get("air_damping", 1.0)
 
-            # PIN CLOTH TO COMBINED COORDINATION GROUPS
+            # Create combined coordination group for cloth pinning
             combined_coordination_group = neck_obj.vertex_groups.new(name="Neck_Combined_Coordination")
 
             for i in range(len(neck_obj.data.vertices)):
@@ -2673,13 +2683,13 @@ def create_neck(armature_obj, figure_name, garment_config, global_cloth_settings
         subdiv_mod.render_levels = 1
 
         # Add fabric material
-        material_config = garment_configs.get("material", {})
+        material_config = garment_config.get("material", {})
         material_color = material_config.get("color", [0.1, 0.3, 0.8, 1.0])
 
         neck_mat = bpy.data.materials.new(name="Neck_Material")
         neck_mat.use_nodes = True
 
-        # Set fabric properties (softer, less shiny than skin)
+        # Set fabric properties
         neck_mat.diffuse_color = material_color
         neck_mat.roughness = material_config.get("roughness", 0.8)
         neck_mat.metallic = material_config.get("metallic", 0.0)
@@ -2708,14 +2718,14 @@ def create_neck(armature_obj, figure_name, garment_config, global_cloth_settings
         # =========================================================================
         bpy.context.view_layer.update()
 
-        script_log("=== GARMENT_NECK CREATION COMPLETE (NEW VERTEX BUNDLE SYSTEM) ===")
+        script_log("=== GARMENT_NECK CREATION COMPLETE (FIXED BUNDLE SYSTEM) ===")
         script_log(f"✓ Neck positioned along neck bone")
         script_log(f"✓ Neck radius: {neck_radius}, Length: {neck_length:.3f}")
         script_log(f"✓ Neck-spine junction diameter: {neck_spine_diameter}")
         script_log(f"✓ Stretchy cloth simulation: {'ENABLED' if cloth_settings.get('enabled', True) else 'DISABLED'}")
         script_log(f"✓ Collar style: {collar_style}")
         script_log(f"✓ Neck parented to {neck_bone_name}")
-        script_log(f"✓ NEW VERTEX BUNDLE SYSTEM: Using CTRL_HEAD_TOP and CTRL_NOSE")
+        script_log(f"✓ FIXED BUNDLE SYSTEM: Using actual bone positions")
         script_log(f"✓ Head-neck vertices: {head_neck_vertices}, Neck-spine vertices: {neck_spine_vertices}")
         script_log(f"✓ Dynamic vertex weighting: ENABLED")
         script_log(f"✓ Seamless integration: Head connection + Spine/shoulder coordination")
