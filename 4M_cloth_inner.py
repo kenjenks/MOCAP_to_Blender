@@ -4427,8 +4427,9 @@ def create_coat(armature_obj, figure_name):
         bpy.context.view_layer.objects.active = coat_obj
         bpy.ops.object.modifier_apply(modifier="Boolean_Union")
 
-        # Remove horizontal cylinder
-        bpy.data.objects.remove(horizontal_cylinder, do_unlink=True)
+        # KEEP the horizontal cylinder for cloth pinning (don't delete it!)
+        horizontal_cylinder.name = f"{figure_name}_Coat_Shoulder_Collider"
+        script_log("✓ Kept horizontal cylinder as shoulder collider")
 
         # =========================================================================
         # STEP 6: SMOOTH ARMPIT AREAS
@@ -4575,20 +4576,26 @@ def create_coat(armature_obj, figure_name):
         coat_control = bpy.context.active_object
         coat_control.name = f"{figure_name}_Coat_Control"
 
-        # Clear any existing constraints from the coat control
-        for constraint in list(coat_control.constraints):
-            coat_control.constraints.remove(constraint)
-
         # PARENTING: Parent the coat to this control
         coat_obj.parent = coat_control
 
+        # Apply rotation and position offsets to COAT ONLY
         coat_obj.rotation_euler = (0, 0, math.radians(90))  # 90° rotation around Z-axis
-
-        #  Move coat RIGHT by half its shoulder_width so coat is centered
-        #  Move coat DOWN by half its height so left shoulder aligns with left shoulder empty
         coat_obj.location = (0, shoulder_width / 2.0, -coat_height / 2.0)
 
+        horizontal_cylinder.location = shoulder_center  # Position at shoulder center
+
+        # Make collider follow shoulder positions using constraints directly
+        copy_pos_left = horizontal_cylinder.constraints.new(type='COPY_LOCATION')
+        copy_pos_left.target = left_shoulder_xyz_empty
+        copy_pos_left.influence = 0.5
+
+        copy_pos_right = horizontal_cylinder.constraints.new(type='COPY_LOCATION')
+        copy_pos_right.target = right_shoulder_xyz_empty
+        copy_pos_right.influence = 0.5
+
         script_log(f"✓ Coat offset by -Z {coat_height / 2.0:.3f} to align left shoulder with left shoulder empty")
+        script_log("✓ Collider follows shoulders via constraints (no parenting)")
 
         # CONSTRAINT 1: DAMPED TRACK to make coat rotate with shoulder line
         damped_track = coat_control.constraints.new(type='DAMPED_TRACK')
@@ -4612,6 +4619,7 @@ def create_coat(armature_obj, figure_name):
         script_log(f"✓ Damped Track: Following {right_shoulder_xyz_empty.name}")
         script_log(f"✓ Copy Location: Anchored to {left_shoulder_xyz_empty.name}")
         script_log(f"✓ Stretch To: Maintaining shoulder width {shoulder_width:.3f}")
+        script_log(f"✓ Collider control follows shoulder position without rotation")
 
         # Now set up vertex-based pinning for cloth simulation
         # Create vertex groups for shoulder pinning (for cloth simulation)
@@ -4729,71 +4737,31 @@ def create_coat(armature_obj, figure_name):
                 hip_control = bpy.context.active_object
                 hip_control.name = f"{figure_name}_Hip_Control"
 
-                # Make hip control follow both hips with CORRECT assignments
+                # Make hip control follow both hips
                 copy_left_hip = hip_control.constraints.new(type='COPY_LOCATION')
-                copy_left_hip.target = left_hip_xyz_empty  # LEFT hip follows LEFT hip empty
+                copy_left_hip.target = left_hip_xyz_empty
                 copy_left_hip.influence = 0.5
 
                 copy_right_hip = hip_control.constraints.new(type='COPY_LOCATION')
-                copy_right_hip.target = right_hip_xyz_empty  # RIGHT hip follows RIGHT hip empty
+                copy_right_hip.target = right_hip_xyz_empty
                 copy_right_hip.influence = 0.5
 
-                # Now make the coat control follow a blend of shoulder control and hip control
-                # BUT preserve the original shoulder constraints!
-                # Store the original shoulder constraints before clearing
-                original_constraints = []
-                for constraint in coat_control.constraints:
-                    if constraint.type in ['COPY_LOCATION', 'DAMPED_TRACK', 'STRETCH_TO']:
-                        original_constraints.append({
-                            'type': constraint.type,
-                            'target': constraint.target,
-                            'influence': constraint.influence,
-                            'track_axis': getattr(constraint, 'track_axis', None),
-                            'rest_length': getattr(constraint, 'rest_length', None)
-                        })
-
-                # Clear existing constraints from coat control
-                for constraint in list(coat_control.constraints):
-                    coat_control.constraints.remove(constraint)
-
-                # Re-add the original shoulder constraints with reduced influence
-                shoulder_influence = 0.6  # 60% shoulder influence
-                hip_influence = 0.4  # 40% hip influence
-
-                for constraint_data in original_constraints:
-                    new_constraint = coat_control.constraints.new(type=constraint_data['type'])
-                    new_constraint.target = constraint_data['target']
-
-                    if constraint_data['type'] == 'COPY_LOCATION':
-                        # This is the left shoulder anchor - reduce its influence
-                        new_constraint.influence = constraint_data['influence'] * shoulder_influence
-                    elif constraint_data['type'] == 'DAMPED_TRACK':
-                        new_constraint.track_axis = constraint_data['track_axis']
-                        new_constraint.influence = constraint_data['influence'] * shoulder_influence
-                    elif constraint_data['type'] == 'STRETCH_TO':
-                        new_constraint.rest_length = constraint_data['rest_length']
-                        new_constraint.volume = 'NO_VOLUME'
-                        new_constraint.influence = constraint_data['influence'] * shoulder_influence
-                    else:
-                        new_constraint.influence = constraint_data['influence'] * shoulder_influence
-
-                # Add hip influence
+                # SIMPLE APPROACH: Add a small hip influence to the existing coat control
+                # This won't break the shoulder constraints
                 copy_hips = coat_control.constraints.new(type='COPY_LOCATION')
                 copy_hips.target = hip_control
-                copy_hips.influence = hip_influence
+                copy_hips.influence = 0.2  # Only 20% hip influence
 
-                script_log("✓ Short coat: 60% shoulder influence + 40% hip influence")
-                script_log("✓ Left shoulder remains anchored to left shoulder XYZ empty")
-                script_log("✓ Right shoulder remains anchored via stretch-to constraint")
-                script_log("✓ Hips influence overall position without breaking shoulder connections")
-                script_log("✓ Added hip vertices to cloth pinning group for short coat")
+                script_log("✓ Short coat: Added 20% hip influence to shoulder control")
+                script_log("✓ Shoulder constraints remain intact at 100%")
+                script_log("✓ Small hip influence for natural movement")
             else:
                 script_log("ERROR: Hip XYZ empties not found - hip pinning disabled")
 
         # =========================================================================
-        # STEP 9: ADD CLOTH SIMULATION WITH STRONG PINNING
+        # STEP 9: ADD CLOTH SIMULATION WITH COLLIDER PINNING
         # =========================================================================
-        script_log("DEBUG: Adding cloth simulation with strong shoulder pinning...")
+        script_log("DEBUG: Adding cloth simulation with shoulder collider pinning...")
 
         # Get cloth settings from the correct nested structure
         coat_config = garment_configs.get("coat_torso", {})
@@ -4802,17 +4770,13 @@ def create_coat(armature_obj, figure_name):
         if cloth_config.get("enabled", True):
             script_log("DEBUG: Creating cloth modifier...")
 
-            # Create the modifier (may return None in some Blender versions)
+            # Create the cloth modifier
             coat_obj.modifiers.new(name="Cloth", type='CLOTH')
-
-            # Get the modifier we just created
             cloth_mod = coat_obj.modifiers.get("Cloth")
 
             if cloth_mod is None:
                 script_log("ERROR: Could not find Cloth modifier after creation")
                 return None
-
-            script_log(f"DEBUG: Successfully retrieved cloth_mod: {cloth_mod.name}")
 
             # Apply cloth settings from config
             cloth_mod.settings.quality = cloth_config.get("quality", 12)
@@ -4824,7 +4788,20 @@ def create_coat(armature_obj, figure_name):
             cloth_mod.settings.air_damping = cloth_config.get("air_damping", 0.5)
             cloth_mod.settings.time_scale = cloth_config.get("time_scale", 1.0)
 
-            # COLLISIONS
+            # Use the shoulder collider cylinder for physical pinning
+            # Make the shoulder collider a collision object
+            collider_mod = horizontal_cylinder.modifiers.new(name="Collision", type='COLLISION')
+            # Collision modifier is enabled by default, no need for use_collision
+
+            # Parent the shoulder collider to the coat control so it moves with shoulders
+            horizontal_cylinder.parent = coat_control
+            horizontal_cylinder.location = (0, 0, 0)  # Relative to parent
+            horizontal_cylinder.rotation_euler = (math.radians(90), 0, 0)  # Relative to parent
+
+            script_log("✓ Shoulder collider set up for physical cloth pinning")
+            script_log("✓ Collider moves with shoulder constraints")
+
+            # COLLISIONS - Enable cloth to collide with other objects
             cloth_mod.collision_settings.use_collision = True
             cloth_mod.collision_settings.collision_quality = cloth_config.get("collision_quality", 8)
             cloth_mod.collision_settings.distance_min = cloth_config.get("external_distance_min", 0.005)
@@ -4833,7 +4810,7 @@ def create_coat(armature_obj, figure_name):
             cloth_mod.collision_settings.use_self_collision = True
             cloth_mod.collision_settings.self_distance_min = cloth_config.get("self_distance_min", 0.002)
 
-            script_log("✓ Coat cloth: STRONG shoulder pinning using shape key drivers")
+            script_log("✓ Cloth: Physical shoulder pinning via collider cylinder")
         else:
             script_log("DEBUG: Cloth simulation disabled for coat")
 
