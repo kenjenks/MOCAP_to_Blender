@@ -590,7 +590,7 @@ def load_replaceable_head(blend_file_path, figure_name, armature_obj):
 
             # Position at head bone (use head instead of tail for better positioning)
             head_obj.location = armature_obj.matrix_world @ head_bone.head - Vector((0, 0, 0.1))
-            script_log(f"✓ Positioned head at DEF_Head bone: {head_obj.location}")
+            script_log(f"✓ Positioned hero_head at DEF_Head bone: {head_obj.location}")
 
         # APPLY SCALE FROM CONFIG:
         replaceable_config = garment_configs.get("garment_head", {}).get("replaceable_head", {})
