@@ -1111,7 +1111,7 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
     # =========================================================================
     script_log("STEP 2: Creating procedural head with safe constraints...")
 
-    def create_procedural_head_safe(armature_obj, figure_name, garment_config, global_cloth_settings, neck_config=None):
+    def create_procedural_head_safe(armature_obj, figure_name, garment_config, global_cloth_settings):
         """Create human-like head with coordinated vertex bundles for seamless neck integration"""
         script_log("Creating procedural garment_head with coordinated vertex bundles and safe constraints...")
 
@@ -1322,8 +1322,7 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
             return None
 
     # CREATE PROCEDURAL HEAD
-    procedural_head = create_procedural_head_safe(armature_obj, figure_name, garment_config, global_cloth_settings,
-                                                  neck_config)
+    procedural_head = create_procedural_head_safe(armature_obj, figure_name, garment_config, global_cloth_settings)
 
     if not procedural_head:
         script_log("ERROR: Failed to create procedural head")
@@ -1418,6 +1417,11 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
                 script_log(f"  - Made collection '{collection.name}' visible")
 
     script_log("=== HEAD CREATION COMPLETE ===")
+
+    # Call create_neck for coordinated creation
+    if neck_config:
+        create_neck(armature_obj, figure_name, neck_config, global_cloth_settings)
+
     return procedural_head
 
 ##########################################################################################
@@ -2069,10 +2073,6 @@ def create_procedural_head(armature_obj, figure_name, garment_config, global_clo
         script_log(f"✓ Bundle center: {head_neck_center}, influence radius: {head_sphere_radius:.3f}")
         script_log(f"✓ Coordination vertices: {coordination_vertices}/{len(head_obj.data.vertices)}")
         script_log(f"✓ PORCELAIN DOLL ARCHITECTURE: Neck anchor + Nose rotation guide")
-
-        # Call create_neck for coordinated creation
-        if neck_config:
-            create_neck(armature_obj, figure_name, neck_config, global_cloth_settings)
 
         return head_obj
 

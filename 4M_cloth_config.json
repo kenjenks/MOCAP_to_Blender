@@ -177,7 +177,7 @@
       "position_offset": [0.0, 0.0, 0.0],
       "rotation_offset": [0.0, 0.0, 0.0],
       "neck_connection_radius": 0.08,
-      "diameter_neck": 0.16,
+      "diameter_neck": 0.08,
       "subdivision_levels": 3,
       "human_proportions": {
         "forehead_scale": 0.95,
