@@ -512,7 +512,7 @@ def resolve_head_file_path(blend_file_path):
 ##########################################################################################
 
 def load_replaceable_head(blend_file_path, figure_name, armature_obj):
-    """Append head mesh from external .blend file using naming conventions"""
+    """Append head mesh from external .blend file - FIXED FOR Main_Head"""
     try:
         # Save current selection
         previous_active = bpy.context.active_object
@@ -521,7 +521,6 @@ def load_replaceable_head(blend_file_path, figure_name, armature_obj):
         script_log(f"load_replaceable_head Appending from: {blend_file_path}")
 
         # RESOLVE PATH PROPERLY
-        # If absolute path, use as-is
         if os.path.isabs(blend_file_path):
             absolute_path = blend_file_path
             script_log(f"Using absolute path: {absolute_path}")
@@ -545,31 +544,30 @@ def load_replaceable_head(blend_file_path, figure_name, armature_obj):
         if not os.path.exists(absolute_path):
             raise FileNotFoundError(f"Head file not found: {absolute_path}")
 
-        # Append the head object using naming convention
+        # Append the Main_Head object specifically
         with bpy.data.libraries.load(absolute_path, link=False) as (data_from, data_to):
-            # Look for the standard head mesh name
-            if "Head_Mesh" in data_from.objects:
-                data_to.objects = ["Head_Mesh"]
-                script_log("✓ Found Head_Mesh object")
-            elif "Main_Head" in data_from.objects:
+            # Look for Main_Head first (this is the exact name in your file)
+            if "Main_Head" in data_from.objects:
                 data_to.objects = ["Main_Head"]
-                script_log("✓ Found Main_Head object")
+                script_log("✓ Found and appending Main_Head object")
             else:
-                # Fallback: use first mesh object
-                mesh_objects = [obj for obj in data_from.objects if
-                                obj.endswith("Mesh") or obj.startswith("Head") or "head" in obj.lower()]
-                if mesh_objects:
-                    data_to.objects = [mesh_objects[0]]
-                    script_log(f"✓ Using fallback mesh: {mesh_objects[0]}")
+                # Fallback: list available objects for debugging
+                available_objects = list(data_from.objects)
+                script_log(f"⚠ Main_Head not found. Available objects: {available_objects}")
+
+                # Try to use first available object
+                if available_objects:
+                    data_to.objects = [available_objects[0]]
+                    script_log(f"✓ Using fallback object: {available_objects[0]}")
                 else:
-                    raise Exception("No suitable head mesh found in blend file")
+                    raise Exception("No objects found in blend file")
 
         if not data_to.objects:
             raise Exception("No objects appended from blend file")
 
         # Get the appended object
         head_obj = data_to.objects[0]
-        head_obj.name = f"{figure_name}_Head_Replacement"  # FIXED: Use consistent naming
+        head_obj.name = f"{figure_name}_Head_Replacement"
 
         # DEBUG: Check if head is in scene collections
         script_log(f"DEBUG: Head created: {head_obj.name}")
@@ -582,23 +580,26 @@ def load_replaceable_head(blend_file_path, figure_name, armature_obj):
             bpy.context.scene.collection.objects.link(head_obj)
             script_log(f"DEBUG: Head collections after linking: {[coll.name for coll in head_obj.users_collection]}")
 
-        # UNCOMMENT AND FIX POSITIONING:
+        # POSITIONING - CRITICAL FIX
         head_bone = armature_obj.pose.bones.get("DEF_Head")
         if head_bone:
-            # Reset scale first
-            head_obj.scale = (1.0, 1.0, 1.0)
+            # Reset transformations first
+            head_obj.location = (0, 0, 0)
+            head_obj.rotation_euler = (0, 0, 0)
+            head_obj.scale = (1, 1, 1)
 
-            # Position at head bone (use head instead of tail for better positioning)
-            head_obj.location = armature_obj.matrix_world @ head_bone.head - Vector((0, 0, 0.1))
+            # Position at head bone (use world coordinates)
+            head_bone_world_pos = armature_obj.matrix_world @ head_bone.head
+            head_obj.location = head_bone_world_pos
             script_log(f"✓ Positioned hero_head at DEF_Head bone: {head_obj.location}")
 
-        # APPLY SCALE FROM CONFIG:
+        # APPLY SCALE FROM CONFIG
         replaceable_config = garment_configs.get("garment_head", {}).get("replaceable_head", {})
         scale_factor = replaceable_config.get("scale_factor", 1.0)
         head_obj.scale = (scale_factor, scale_factor, scale_factor)
         script_log(f"✓ Applied scale factor: {scale_factor}")
 
-        # ENSURE VISIBILITY:
+        # ENSURE VISIBILITY
         head_obj.hide_set(False)
         head_obj.hide_viewport = False
         head_obj.hide_render = False
@@ -609,6 +610,7 @@ def load_replaceable_head(blend_file_path, figure_name, armature_obj):
         # DEBUG: Final check
         script_log(f"DEBUG: Final - Head in scene: {head_obj.name in bpy.context.scene.objects}")
         script_log(f"DEBUG: Final - Head collections: {[coll.name for coll in head_obj.users_collection]}")
+        script_log(f"DEBUG: Final - Head location: {head_obj.location}")
         script_log(f"DEBUG: Final - Head dimensions: {head_obj.dimensions}")
 
         # Materials are automatically appended with the object
@@ -1069,60 +1071,6 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
 
         return nose_obj
 
-    def setup_head_constraints_safe(armature_obj, head_bone_name):
-        """Safe head constraint setup without recursion - PORCELAIN DOLL architecture"""
-        script_log(f"Setting up safe head constraints for {head_bone_name}...")
-
-        bpy.context.view_layer.objects.active = armature_obj
-        bpy.ops.object.mode_set(mode='POSE')
-
-        head_bone = armature_obj.pose.bones[head_bone_name]
-
-        # 1. CLEAR ALL existing constraints first (prevent conflicts)
-        for constraint in list(head_bone.constraints):
-            head_bone.constraints.remove(constraint)
-        script_log("✓ Cleared existing head constraints")
-
-        # 2. LOCATION: Anchor to neck (bottom connection - porcelain doll base)
-        neck_bone = armature_obj.pose.bones.get("DEF_Neck")
-        if neck_bone:
-            copy_loc = head_bone.constraints.new('COPY_LOCATION')
-            copy_loc.target = armature_obj
-            copy_loc.subtarget = "DEF_Neck"
-            copy_loc.use_offset = True  # Maintain head's local position relative to neck
-            copy_loc.influence = 1.0
-            script_log("✓ Head COPY_LOCATION -> DEF_Neck (porcelain doll anchor)")
-
-        # 3. ROTATION: Damped track to NOSE control point (facing direction)
-        nose_obj = bpy.data.objects.get("CTRL_NOSE")
-        if nose_obj:
-            track = head_bone.constraints.new('DAMPED_TRACK')
-            track.name = "Track_Nose_Direction"
-            track.target = nose_obj
-            track.track_axis = 'TRACK_Y'  # Head Y-axis faces nose
-            track.influence = 1.0
-            script_log("✓ Head DAMPED_TRACK -> CTRL_NOSE (facing direction)")
-
-            # 4. ROTATION LIMITS: Prevent extreme angles for stability
-            limit_rot = head_bone.constraints.new('LIMIT_ROTATION')
-            limit_rot.name = "Limit_Head_Rotation"
-            limit_rot.use_limit_x = True
-            limit_rot.min_x = -0.5  # Limited head tilt (nodding)
-            limit_rot.max_x = 0.5
-            limit_rot.use_limit_y = True
-            limit_rot.min_y = -1.5  # Head turn (looking left/right)
-            limit_rot.max_y = 1.5
-            limit_rot.use_limit_z = True
-            limit_rot.min_z = -0.3  # Head roll (ear to shoulder)
-            limit_rot.max_z = 0.3
-            limit_rot.owner_space = 'LOCAL'
-            script_log("✓ Added natural head rotation limits")
-        else:
-            script_log("⚠ WARNING: CTRL_NOSE not found, head rotation will be neutral")
-
-        bpy.ops.object.mode_set(mode='OBJECT')
-        script_log("✓ Safe head constraints setup complete")
-
     def get_bundle_center(bundle_name):
         """Get bundle center position - FALLBACK IMPLEMENTATION"""
         # Try to get from control points first
@@ -1349,8 +1297,8 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
             # =========================================================================
             # STEP 6: SETUP HEAD CONSTRAINTS
             # =========================================================================
-            script_log("DEBUG: Setting up head bone constraints...")
-            setup_head_constraints_safe(armature_obj, head_bone_name)
+            # script_log("DEBUG: Setting up head bone constraints...")
+            # setup_head_constraints_safe(armature_obj, head_bone_name)
 
             # =========================================================================
             # STEP 7: FINAL SETUP
@@ -1658,62 +1606,6 @@ def ensure_nose_control_point(first_frame):
 
     return nose_obj
 
-
-def setup_head_constraints_safe(armature_obj, head_bone_name):
-    """Safe head constraint setup without recursion - PORCELAIN DOLL architecture"""
-    script_log(f"Setting up safe head constraints for {head_bone_name}...")
-
-    bpy.context.view_layer.objects.active = armature_obj
-    bpy.ops.object.mode_set(mode='POSE')
-
-    head_bone = armature_obj.pose.bones[head_bone_name]
-
-    # 1. CLEAR ALL existing constraints first (prevent conflicts)
-    for constraint in list(head_bone.constraints):
-        head_bone.constraints.remove(constraint)
-    script_log("✓ Cleared existing head constraints")
-
-    # 2. LOCATION: Anchor to neck (bottom connection - porcelain doll base)
-    neck_bone = armature_obj.pose.bones.get("DEF_Neck")
-    if neck_bone:
-        copy_loc = head_bone.constraints.new('COPY_LOCATION')
-        copy_loc.target = armature_obj
-        copy_loc.subtarget = "DEF_Neck"
-        copy_loc.use_offset = True  # Maintain head's local position relative to neck
-        copy_loc.influence = 1.0
-        script_log("✓ Head COPY_LOCATION -> DEF_Neck (porcelain doll anchor)")
-
-    # 3. ROTATION: Damped track to NOSE control point (facing direction)
-    nose_obj = bpy.data.objects.get("CTRL_NOSE")
-    if nose_obj:
-        track = head_bone.constraints.new('DAMPED_TRACK')
-        track.name = "Track_Nose_Direction"
-        track.target = nose_obj
-        track.track_axis = 'TRACK_Y'  # Head Y-axis faces nose
-        track.influence = 1.0
-        script_log("✓ Head DAMPED_TRACK -> CTRL_NOSE (facing direction)")
-
-        # 4. ROTATION LIMITS: Prevent extreme angles for stability
-        limit_rot = head_bone.constraints.new('LIMIT_ROTATION')
-        limit_rot.name = "Limit_Head_Rotation"
-        limit_rot.use_limit_x = True
-        limit_rot.min_x = -0.5  # Limited head tilt (nodding)
-        limit_rot.max_x = 0.5
-        limit_rot.use_limit_y = True
-        limit_rot.min_y = -1.5  # Head turn (looking left/right)
-        limit_rot.max_y = 1.5
-        limit_rot.use_limit_z = True
-        limit_rot.min_z = -0.3  # Head roll (ear to shoulder)
-        limit_rot.max_z = 0.3
-        limit_rot.owner_space = 'LOCAL'
-        script_log("✓ Added natural head rotation limits")
-    else:
-        script_log("⚠ WARNING: CTRL_NOSE not found, head rotation will be neutral")
-
-    bpy.ops.object.mode_set(mode='OBJECT')
-    script_log("✓ Safe head constraints setup complete")
-
-
 def ensure_nose_control_point(first_frame):
     """Guarantee CTRL_NOSE exists and is positioned correctly"""
     script_log("Ensuring NOSE control point exists...")
@@ -1746,61 +1638,6 @@ def ensure_nose_control_point(first_frame):
         script_log(f"✓ Using existing CTRL_NOSE at {nose_obj.location}")
 
     return nose_obj
-
-
-def setup_head_constraints_safe(armature_obj, head_bone_name):
-    """Safe head constraint setup without recursion - PORCELAIN DOLL architecture"""
-    script_log(f"Setting up safe head constraints for {head_bone_name}...")
-
-    bpy.context.view_layer.objects.active = armature_obj
-    bpy.ops.object.mode_set(mode='POSE')
-
-    head_bone = armature_obj.pose.bones[head_bone_name]
-
-    # 1. CLEAR ALL existing constraints first (prevent conflicts)
-    for constraint in list(head_bone.constraints):
-        head_bone.constraints.remove(constraint)
-    script_log("✓ Cleared existing head constraints")
-
-    # 2. LOCATION: Anchor to neck (bottom connection - porcelain doll base)
-    neck_bone = armature_obj.pose.bones.get("DEF_Neck")
-    if neck_bone:
-        copy_loc = head_bone.constraints.new('COPY_LOCATION')
-        copy_loc.target = armature_obj
-        copy_loc.subtarget = "DEF_Neck"
-        copy_loc.use_offset = True  # Maintain head's local position relative to neck
-        copy_loc.influence = 1.0
-        script_log("✓ Head COPY_LOCATION -> DEF_Neck (porcelain doll anchor)")
-
-    # 3. ROTATION: Damped track to NOSE control point (facing direction)
-    nose_obj = bpy.data.objects.get("CTRL_NOSE")
-    if nose_obj:
-        track = head_bone.constraints.new('DAMPED_TRACK')
-        track.name = "Track_Nose_Direction"
-        track.target = nose_obj
-        track.track_axis = 'TRACK_Y'  # Head Y-axis faces nose
-        track.influence = 1.0
-        script_log("✓ Head DAMPED_TRACK -> CTRL_NOSE (facing direction)")
-
-        # 4. ROTATION LIMITS: Prevent extreme angles for stability
-        limit_rot = head_bone.constraints.new('LIMIT_ROTATION')
-        limit_rot.name = "Limit_Head_Rotation"
-        limit_rot.use_limit_x = True
-        limit_rot.min_x = -0.5  # Limited head tilt (nodding)
-        limit_rot.max_x = 0.5
-        limit_rot.use_limit_y = True
-        limit_rot.min_y = -1.5  # Head turn (looking left/right)
-        limit_rot.max_y = 1.5
-        limit_rot.use_limit_z = True
-        limit_rot.min_z = -0.3  # Head roll (ear to shoulder)
-        limit_rot.max_z = 0.3
-        limit_rot.owner_space = 'LOCAL'
-        script_log("✓ Added natural head rotation limits")
-    else:
-        script_log("⚠ WARNING: CTRL_NOSE not found, head rotation will be neutral")
-
-    bpy.ops.object.mode_set(mode='OBJECT')
-    script_log("✓ Safe head constraints setup complete")
 
 #################################################################################
 
@@ -2208,62 +2045,7 @@ def create_procedural_head(armature_obj, figure_name, garment_config, global_clo
 
             return nose_obj
 
-        def setup_head_constraints_safe(armature_obj, head_bone_name):
-            """Safe head constraint setup without recursion - PORCELAIN DOLL architecture"""
-            script_log(f"Setting up safe head constraints for {head_bone_name}...")
-
-            bpy.context.view_layer.objects.active = armature_obj
-            bpy.ops.object.mode_set(mode='POSE')
-
-            head_bone = armature_obj.pose.bones[head_bone_name]
-
-            # 1. CLEAR ALL existing constraints first (prevent conflicts)
-            for constraint in list(head_bone.constraints):
-                head_bone.constraints.remove(constraint)
-            script_log("✓ Cleared existing head constraints")
-
-            # 2. LOCATION: Anchor to neck (bottom connection - porcelain doll base)
-            neck_bone = armature_obj.pose.bones.get("DEF_Neck")
-            if neck_bone:
-                copy_loc = head_bone.constraints.new('COPY_LOCATION')
-                copy_loc.target = armature_obj
-                copy_loc.subtarget = "DEF_Neck"
-                copy_loc.use_offset = True  # Maintain head's local position relative to neck
-                copy_loc.influence = 1.0
-                script_log("✓ Head COPY_LOCATION -> DEF_Neck (porcelain doll anchor)")
-
-            # 3. ROTATION: Damped track to NOSE control point (facing direction)
-            nose_obj = bpy.data.objects.get("CTRL_NOSE")
-            if nose_obj:
-                track = head_bone.constraints.new('DAMPED_TRACK')
-                track.name = "Track_Nose_Direction"
-                track.target = nose_obj
-                track.track_axis = 'TRACK_Y'  # Head Y-axis faces nose
-                track.influence = 1.0
-                script_log("✓ Head DAMPED_TRACK -> CTRL_NOSE (facing direction)")
-
-                # 4. ROTATION LIMITS: Prevent extreme angles for stability
-                limit_rot = head_bone.constraints.new('LIMIT_ROTATION')
-                limit_rot.name = "Limit_Head_Rotation"
-                limit_rot.use_limit_x = True
-                limit_rot.min_x = -0.5  # Limited head tilt (nodding)
-                limit_rot.max_x = 0.5
-                limit_rot.use_limit_y = True
-                limit_rot.min_y = -1.5  # Head turn (looking left/right)
-                limit_rot.max_y = 1.5
-                limit_rot.use_limit_z = True
-                limit_rot.min_z = -0.3  # Head roll (ear to shoulder)
-                limit_rot.max_z = 0.3
-                limit_rot.owner_space = 'LOCAL'
-                script_log("✓ Added natural head rotation limits")
-            else:
-                script_log("⚠ WARNING: CTRL_NOSE not found, head rotation will be neutral")
-
-            bpy.ops.object.mode_set(mode='OBJECT')
-            script_log("✓ Safe head constraints setup complete")
-
         nose_obj = ensure_nose_control_point(first_frame)
-        setup_head_constraints_safe(armature_obj, head_bone_name)
 
         # =========================================================================
         # STEP 10: FINAL VERIFICATION

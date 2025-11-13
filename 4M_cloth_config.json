@@ -213,7 +213,7 @@
         "air_damping": 1.0
       },
       "replaceable_head": {
-        "enabled": true,
+        "enabled": false,
         "export_template": false,
         "export_path": "assets/hero_head_template.blend",
         "blend_file": "assets/hero_head.blend",
