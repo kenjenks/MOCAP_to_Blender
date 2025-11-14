@@ -426,10 +426,10 @@
       "enabled": true,
       "radial_segments": 32,
       "longitudinal_segments": 24,
-      "torso_height": 0.8,
-      "torso_radius": 0.15,
-      "diameter_start": 0.15,
-      "coat_length": "long",
+      "torso_height": 0.6,
+      "torso_radius": 0.16,
+      "diameter_start": 0.32,
+      "coat_length": "short",
       "quarter_spread": 0.6,
       "smooth_armpits": false,
       "armpit_smooth_radius": 0.08,
@@ -437,10 +437,10 @@
       "enable_armpit_correction": true,
       "coat_length_settings": {
         "short": {
-          "length_factor": 1.0
+          "length_factor": 1.1
         },
         "long": {
-          "length_factor": 1.0,
+          "length_factor": 0.8,
           "skirt_start_ratio": 0.6
         }
       },

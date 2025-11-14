@@ -4055,11 +4055,12 @@ def create_coat(armature_obj, figure_name):
     script_log("Creating coat torso garment...")
 
     # Get coat configuration
-    coat_length = garment_configs.get("coat_length", "short")  # "short" or "long"
-    radial_segments = garment_configs.get("radial_segments", 32)
-    longitudinal_segments = garment_configs.get("longitudinal_segments", 24)
-    torso_radius = garment_configs.get("torso_radius", 0.25)
-    puffiness = garment_configs.get("puffiness", 1.05)
+    coat_config = garment_configs.get("coat_torso", {})
+    coat_length = coat_config.get("coat_length", "short")  # "short" or "long"
+    radial_segments = coat_config.get("radial_segments", 32)
+    longitudinal_segments = coat_config.get("longitudinal_segments", 24)
+    torso_radius = coat_config.get("torso_radius", 0.25)  # This should now get 0.05
+    puffiness = coat_config.get("puffiness", 1.05)
 
     # GET SHOULDER DIAMETER FROM SLEEVE CONFIG
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -4444,7 +4445,7 @@ def create_coat(armature_obj, figure_name):
 
         # Create a control empty at the shoulder center
         shoulder_center = (
-                                      left_shoulder_xyz_empty.matrix_world.translation + right_shoulder_xyz_empty.matrix_world.translation) / 2
+                                  left_shoulder_xyz_empty.matrix_world.translation + right_shoulder_xyz_empty.matrix_world.translation) / 2
 
         bpy.ops.object.empty_add(type='PLAIN_AXES', location=shoulder_center)
         coat_control = bpy.context.active_object
@@ -4457,19 +4458,13 @@ def create_coat(armature_obj, figure_name):
         coat_obj.rotation_euler = (0, 0, math.radians(90))  # 90° rotation around Z-axis
         coat_obj.location = (0, shoulder_width / 2.0, -coat_height / 2.0)
 
-        horizontal_cylinder.location = shoulder_center  # Position at shoulder center
-
-        # Make collider follow shoulder positions using constraints directly
-        copy_pos_left = horizontal_cylinder.constraints.new(type='COPY_LOCATION')
-        copy_pos_left.target = left_shoulder_xyz_empty
-        copy_pos_left.influence = 0.5
-
-        copy_pos_right = horizontal_cylinder.constraints.new(type='COPY_LOCATION')
-        copy_pos_right.target = right_shoulder_xyz_empty
-        copy_pos_right.influence = 0.5
+        # PARENT THE HORIZONTAL CYLINDER TO THE COAT CONTROL INSTEAD OF USING CONSTRAINTS
+        horizontal_cylinder.parent = coat_control
+        horizontal_cylinder.location = (0, shoulder_width / 2.0, 0)  # Relative to parent
+        horizontal_cylinder.rotation_euler = (math.radians(90), 0, 0)  # Fixed rotation relative to parent
 
         script_log(f"✓ Coat offset by -Z {coat_height / 2.0:.3f} to align left shoulder with left shoulder empty")
-        script_log("✓ Collider follows shoulders via constraints (no parenting)")
+        script_log("✓ Horizontal cylinder parented to coat control with fixed rotation")
 
         # CONSTRAINT 1: DAMPED TRACK to make coat rotate with shoulder line
         damped_track = coat_control.constraints.new(type='DAMPED_TRACK')
@@ -4493,69 +4488,17 @@ def create_coat(armature_obj, figure_name):
         script_log(f"✓ Damped Track: Following {right_shoulder_xyz_empty.name}")
         script_log(f"✓ Copy Location: Anchored to {left_shoulder_xyz_empty.name}")
         script_log(f"✓ Stretch To: Maintaining shoulder width {shoulder_width:.3f}")
-        script_log(f"✓ Collider control follows shoulder position without rotation")
-
-        # Now set up vertex-based pinning for cloth simulation
-        # Create vertex groups for shoulder pinning (for cloth simulation)
-        left_shoulder_group = coat_obj.vertex_groups.new(name="Left_Shoulder_Pin")
-        right_shoulder_group = coat_obj.vertex_groups.new(name="Right_Shoulder_Pin")
-
-        # Apply strong pinning weights to shoulder areas
-        for vert in mesh.vertices:
-            vert_co = coat_obj.matrix_world @ vert.co
-            vert_height = vert_co.z - shoulder_center.z
-
-            # LEFT SHOULDER - STRONG PINNING (around left shoulder area)
-            dist_to_left = (vert_co - left_shoulder_xyz_empty.matrix_world.translation).length
-            if dist_to_left <= shoulder_influence_radius:
-                weight = 1.0 - (dist_to_left / shoulder_influence_radius)
-                weight = weight * weight  # Quadratic falloff
-
-                # Height-based attenuation - only pin upper areas
-                height_factor = max(0.0, 1.0 - (abs(vert_height) / (coat_height * 0.2)))
-                final_weight = weight * height_factor
-
-                if final_weight > 0.1:
-                    left_shoulder_group.add([vert.index], final_weight, 'REPLACE')
-
-            # RIGHT SHOULDER - STRONG PINNING (around right shoulder area)
-            dist_to_right = (vert_co - right_shoulder_xyz_empty.matrix_world.translation).length
-            if dist_to_right <= shoulder_influence_radius:
-                weight = 1.0 - (dist_to_right / shoulder_influence_radius)
-                weight = weight * weight  # Quadratic falloff
-
-                # Height-based attenuation - only pin upper areas
-                height_factor = max(0.0, 1.0 - (abs(vert_height) / (coat_height * 0.2)))
-                final_weight = weight * height_factor
-
-                if final_weight > 0.1:
-                    right_shoulder_group.add([vert.index], final_weight, 'REPLACE')
-
-        # Create combined pinning group for cloth simulation
-        combined_anchors_group = coat_obj.vertex_groups.new(name="Coat_Combined_Anchors")
-
-        # Combine weights from both shoulder groups
-        for i in range(len(coat_obj.data.vertices)):
-            max_weight = 0.0
-            for group_name in ["Left_Shoulder_Pin", "Right_Shoulder_Pin"]:
-                group = coat_obj.vertex_groups.get(group_name)
-                if group:
-                    try:
-                        weight = group.weight(i)
-                        max_weight = max(max_weight, weight)
-                    except:
-                        pass
-
-            if max_weight > 0.1:
-                combined_anchors_group.add([i], max_weight, 'REPLACE')
-
-        script_log("✓ Coat control setup with DAMPED_TRACK + COPY_LOCATION + STRETCH_TO")
-        script_log("✓ Vertex-based pinning ready for cloth simulation")
+        script_log(f"✓ Horizontal cylinder follows via parenting to coat control")
 
         # =========================================================================
-        # STEP 8.5: HIP PINNING SETUP FOR SHORT COATS
+        # STEP 8.5: HIP PINNING SETUP FOR SHORT COATS - FIXED
         # =========================================================================
-        if coat_length == "short" and False:
+
+        coat_config = garment_configs.get("coat_torso", {})
+        cloth_config = coat_config.get("cloth_settings", {})
+        cloth_enabled = cloth_config.get("enabled", True)
+
+        if coat_length == "short" and cloth_enabled:
             script_log("DEBUG: Setting up hip pinning for short coats...")
 
             if left_hip_xyz_empty and right_hip_xyz_empty:
@@ -4601,36 +4544,68 @@ def create_coat(armature_obj, figure_name):
                 script_log(
                     f"✓ Identified {len(left_hip_vertices)} left hip vertices and {len(right_hip_vertices)} right hip vertices")
 
-                # Set up hip pinning for short coats
-                script_log("✓ Activating hip pinning for short coat")
+                # Set up hip pinning for short coats - USE VERTEX GROUPS ONLY, NO CONSTRAINT
+                script_log("✓ Activating hip pinning for short coat via vertex groups only")
+                script_log("✓ No constraint added to prevent coat from moving down")
 
-                # Create a separate hip control empty
-                hip_center = (
-                                         left_hip_xyz_empty.matrix_world.translation + right_hip_xyz_empty.matrix_world.translation) / 2
-                bpy.ops.object.empty_add(type='PLAIN_AXES', location=hip_center)
-                hip_control = bpy.context.active_object
-                hip_control.name = f"{figure_name}_Hip_Control"
+                # DO NOT add the hip control constraint that pulls the coat down
+                # The vertex groups will handle hip pinning during cloth simulation
 
-                # Make hip control follow both hips
-                copy_left_hip = hip_control.constraints.new(type='COPY_LOCATION')
-                copy_left_hip.target = left_hip_xyz_empty
-                copy_left_hip.influence = 0.5
+                # Update the combined anchors group to include hip vertices
+                for i in range(len(coat_obj.data.vertices)):
+                    max_weight = 0.0
 
-                copy_right_hip = hip_control.constraints.new(type='COPY_LOCATION')
-                copy_right_hip.target = right_hip_xyz_empty
-                copy_right_hip.influence = 0.5
+                    # Check all pinning groups including hip groups
+                    for group_name in ["Left_Shoulder_Pin", "Right_Shoulder_Pin", "Left_Hip_Zone", "Right_Hip_Zone"]:
+                        group = coat_obj.vertex_groups.get(group_name)
+                        if group:
+                            try:
+                                weight = group.weight(i)
+                                max_weight = max(max_weight, weight)
+                            except:
+                                pass
 
-                # SIMPLE APPROACH: Add a small hip influence to the existing coat control
-                # This won't break the shoulder constraints
-                copy_hips = coat_control.constraints.new(type='COPY_LOCATION')
-                copy_hips.target = hip_control
-                copy_hips.influence = 0.2  # Only 20% hip influence
+                    if max_weight > 0.1:
+                        combined_anchors_group.add([i], max_weight, 'REPLACE')
 
-                script_log("✓ Short coat: Added 20% hip influence to shoulder control")
-                script_log("✓ Shoulder constraints remain intact at 100%")
-                script_log("✓ Small hip influence for natural movement")
+                script_log("✓ Hip vertices added to combined anchors group for cloth pinning")
+                script_log("✓ Coat maintains shoulder position with hip pinning via vertex groups")
             else:
                 script_log("ERROR: Hip XYZ empties not found - hip pinning disabled")
+
+        # =========================================================================
+        # STEP 8.7: ADD DOWNWARD GRAVITY CONSTRAINT FOR COAT STABILITY
+        # =========================================================================
+        script_log("DEBUG: Adding downward gravity constraint for coat stability...")
+
+        # Calculate hip midpoint
+        hip_center = (left_hip_xyz_empty.matrix_world.translation + right_hip_xyz_empty.matrix_world.translation) / 2
+
+        # Create a target empty slightly below the hip midpoint to simulate gravity
+        gravity_target_pos = hip_center + Vector((0, 0, -0.1))  # 10cm below hips
+        bpy.ops.object.empty_add(type='PLAIN_AXES', location=gravity_target_pos)
+        gravity_target = bpy.context.active_object
+        gravity_target.name = f"{figure_name}_Coat_Gravity_Target"
+
+        # Make gravity target follow hips with slight downward bias
+        copy_hip_left = gravity_target.constraints.new(type='COPY_LOCATION')
+        copy_hip_left.target = left_hip_xyz_empty
+        copy_hip_left.influence = 0.4  # 40% from left hip
+
+        copy_hip_right = gravity_target.constraints.new(type='COPY_LOCATION')
+        copy_hip_right.target = right_hip_xyz_empty
+        copy_hip_right.influence = 0.4  # 40% from right hip
+
+        # The remaining 20% comes from the initial position (10cm below hips)
+
+        # Add damped track constraint to coat control with 20% influence
+        gravity_track = coat_control.constraints.new(type='DAMPED_TRACK')
+        gravity_track.target = gravity_target
+        gravity_track.track_axis = 'TRACK_NEGATIVE_Z'  # Track downward
+        gravity_track.influence = 0.2  # 20% influence - enough to stabilize but not overpower
+
+        script_log("✓ Added downward gravity constraint (20% influence)")
+        script_log("✓ Coat will tend to hang downward toward hips during animation")
 
         # =========================================================================
         # STEP 9: ADD CLOTH SIMULATION WITH COLLIDER PINNING
@@ -4694,6 +4669,8 @@ def create_coat(armature_obj, figure_name):
         script_log("DEBUG: Adding coat materials...")
 
         apply_material_from_config(coat_obj, "coat_torso", material_name="Coat_Material",
+                                   fallback_color=(0.1, 0.3, 0.8, 1.0))
+        apply_material_from_config(horizontal_cylinder, "coat_torso", material_name="Coat_Material",
                                    fallback_color=(0.1, 0.3, 0.8, 1.0))
 
         # =========================================================================
