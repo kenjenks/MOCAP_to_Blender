@@ -173,7 +173,7 @@
   "cloth_garments": {
     "garment_head": {
       "enabled": true,
-      "scale": [1.0, 1.12, 1.2],
+      "scale": [0.35, 0.35, 0.35],
       "position_offset": [0.0, 0.0, 0.0],
       "rotation_offset": [0.0, 0.0, 0.0],
       "neck_connection_radius": 0.08,
