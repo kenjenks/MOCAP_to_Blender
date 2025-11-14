@@ -1098,8 +1098,8 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
                 return None
 
             # Get head bone positions in world space
-            head_base_pos = armature_obj.matrix_world @ head_bone.head
-            head_top_pos = armature_obj.matrix_world @ head_bone.tail
+            head_base_pos = armature_obj.matrix_world @ head_bone.head  # Neck connection
+            head_top_pos = armature_obj.matrix_world @ head_bone.tail  # Top of head
 
             # Get head dimensions from config
             scale = garment_config.get("scale", [0.25, 0.28, 0.3])
@@ -1130,15 +1130,20 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
             script_log(f"DEBUG: Head-neck bundle center: {head_neck_center}")
 
             # =========================================================================
-            # STEP 1: CREATE HEAD MESH
+            # STEP 1: CREATE HEAD MESH - FIXED POSITIONING
             # =========================================================================
             script_log("DEBUG: Creating procedural head as UV sphere...")
 
             bpy.ops.object.mode_set(mode='OBJECT')
             bpy.ops.object.select_all(action='DESELECT')
 
-            # Create head at the TOP of the head bone
-            head_location = head_top_pos + Vector(position_offset)
+            # Position the head so the TOP of the sphere aligns with head_top_pos
+            # UV sphere extends radius units above and below the center
+            head_height_offset = head_base_radius * scale[2]  # Account for Z scaling
+
+            # Calculate head center position (head_top_pos should be top of head, not center)
+            head_center_pos = head_top_pos - Vector((0, 0, head_height_offset))
+            head_location = head_center_pos + Vector(position_offset)
 
             bpy.ops.mesh.primitive_uv_sphere_add(
                 segments=head_segments,
@@ -1158,7 +1163,29 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
                 head_obj.rotation_euler = Vector(rotation_offset)
 
             # =========================================================================
-            # STEP 2: SIMPLE HEAD SHAPING
+            # STEP 2: VERIFY POSITIONING AND ADJUST IF NEEDED
+            # =========================================================================
+            script_log("DEBUG: Verifying head positioning...")
+
+            # Calculate expected top position after scaling
+            final_head_height = head_base_radius * scale[2]
+            expected_top_pos = head_location + Vector((0, 0, final_head_height))
+
+            script_log(f"DEBUG: Head center: {head_location}")
+            script_log(f"DEBUG: Expected top: {expected_top_pos}")
+            script_log(f"DEBUG: Target top: {head_top_pos}")
+            script_log(f"DEBUG: Position difference: {(expected_top_pos - head_top_pos).length}")
+
+            # If positioning is significantly off, apply corrective offset
+            position_error = (expected_top_pos - head_top_pos).length
+            if position_error > 0.01:  # More than 1cm error
+                script_log(f"⚠ Applying corrective position offset: {position_error:.4f}")
+                correction_offset = head_top_pos - expected_top_pos
+                head_obj.location += correction_offset
+                script_log(f"DEBUG: Applied correction: {correction_offset}")
+
+            # =========================================================================
+            # STEP 3: SIMPLE HEAD SHAPING
             # =========================================================================
             script_log("DEBUG: Applying basic head shaping...")
 
@@ -1172,7 +1199,7 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
             bpy.ops.object.mode_set(mode='OBJECT')
 
             # =========================================================================
-            # STEP 3: SETUP VERTEX GROUPS WITH VERTEX BUNDLE SYSTEM
+            # STEP 4: SETUP VERTEX GROUPS WITH VERTEX BUNDLE SYSTEM - FIXED
             # =========================================================================
             script_log("DEBUG: Setting up head vertex groups with vertex bundle system...")
 
@@ -1191,8 +1218,8 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
             # Create coordination group using vertex bundles system
             coordination_group = head_obj.vertex_groups.new(name="Head_Coordination_Bundle")
 
-            # Calculate sphere radius for influence
-            head_sphere_radius = head_neck_radius * 2.0
+            # Calculate sphere radius for influence - use larger radius for full head coverage
+            head_sphere_radius = head_neck_radius * 3.0  # Increased from 2.0 to 3.0
 
             weighted_vertices = 0
             coordination_vertices = 0
@@ -1203,36 +1230,46 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
 
                 # Apply weight based on distance to bundle center (SPHERICAL APPROACH)
                 if distance <= head_sphere_radius:
+                    # Use linear falloff instead of quadratic for smoother transitions
                     weight = 1.0 - (distance / head_sphere_radius)
-                    weight = weight * weight  # Quadratic falloff
 
-                    # Reduce weight for top of head (more flexible) while maintaining strong neck connection
+                    # Apply gentle vertical falloff instead of aggressive reduction
                     vert_local = head_obj.matrix_world.inverted() @ vert_pos
 
-                    # Calculate vertical position relative to head
-                    if vert_local.z > 0.5:  # Top of head
-                        weight *= 0.3
-                    elif vert_local.z > 0.2:  # Upper head
-                        weight *= 0.6
-                    # Full weight for neck area (z < 0)
+                    # Calculate vertical position relative to head - use gentler falloff
+                    if vert_local.z > 0.7:  # Only very top of head gets reduced weight
+                        weight *= 0.8  # Reduced from 0.3 to 0.8
+                    elif vert_local.z > 0.4:  # Upper head gets moderate reduction
+                        weight *= 0.9  # Reduced from 0.6 to 0.9
+                    # Full weight for lower head and neck area
 
-                    if weight > 0.1:
+                    # Ensure minimum weight for all vertices within radius
+                    min_weight = 0.3  # Increased from implicit 0.0
+                    weight = max(weight, min_weight)
+
+                    # Apply to coordination group with lower threshold
+                    if weight > 0.05:  # Reduced threshold from 0.1 to 0.05
                         coordination_group.add([i], weight, 'REPLACE')
                         coordination_vertices += 1
 
-                    # Apply to main head group with coordinated weight
+                    # Apply to main head group
                     head_group.add([i], weight, 'REPLACE')
                     weighted_vertices += 1
                 else:
-                    # Light default weight for distant vertices
-                    head_group.add([i], 0.2, 'REPLACE')
+                    # Give distant vertices reasonable weight instead of very low weight
+                    # Calculate falloff for vertices outside main radius
+                    falloff_distance = min(distance, head_sphere_radius * 2.0)  # Extended falloff range
+                    falloff_weight = 1.0 - ((falloff_distance - head_sphere_radius) / head_sphere_radius)
+                    falloff_weight = max(falloff_weight, 0.1)  # Minimum weight of 0.1
+
+                    head_group.add([i], falloff_weight, 'REPLACE')
                     weighted_vertices += 1
 
             script_log(f"✓ Applied vertex bundle weighting to {weighted_vertices} vertices")
             script_log(f"✓ Coordination bundle applied to {coordination_vertices} vertices")
 
             # =========================================================================
-            # STEP 4: ADD ARMATURE MODIFIER AND PARENTING
+            # STEP 5: ADD ARMATURE MODIFIER AND PARENTING
             # =========================================================================
             script_log("DEBUG: Adding armature modifier and parenting...")
 
@@ -1247,7 +1284,7 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
             script_log("✓ Parented head to armature")
 
             # =========================================================================
-            # STEP 5: ADD SUBDIVISION AND MATERIALS
+            # STEP 6: ADD SUBDIVISION AND MATERIALS
             # =========================================================================
             script_log("DEBUG: Adding subdivision and skin material...")
 
@@ -1285,9 +1322,19 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
             head_obj.data.materials.append(head_mat)
 
             # =========================================================================
-            # STEP 6: FINAL SETUP AND VERIFICATION
+            # STEP 7: FINAL POSITION VERIFICATION
             # =========================================================================
             bpy.context.view_layer.update()
+
+            # Verify final positioning
+            head_bbox = [head_obj.matrix_world @ Vector(v) for v in head_obj.bound_box]
+            head_top_z = max(v.z for v in head_bbox)
+            target_top_z = head_top_pos.z
+            final_error = abs(head_top_z - target_top_z)
+
+            script_log(f"DEBUG: Final head top Z: {head_top_z:.4f}")
+            script_log(f"DEBUG: Target head top Z: {target_top_z:.4f}")
+            script_log(f"DEBUG: Final positioning offset: {final_error:.4f}")
 
             # Verify the setup
             has_armature_mod = any(mod.type == 'ARMATURE' for mod in head_obj.modifiers)
@@ -1296,6 +1343,7 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
 
             script_log("=== PROCEDURAL HEAD CREATION COMPLETE ===")
             script_log(f"✓ Head created at: {head_location}")
+            script_log(f"✓ Final positioning offset: {final_error:.4f}")
             script_log(f"✓ Armature modifier: {'PRESENT' if has_armature_mod else 'MISSING'}")
             script_log(f"✓ Vertex groups: {'PRESENT' if has_vertex_groups else 'MISSING'}")
             script_log(f"✓ Parented to armature: {'YES' if has_parent else 'NO'}")
