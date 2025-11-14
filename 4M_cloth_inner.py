@@ -351,6 +351,10 @@ def populate_joint_control_systems():
         # Head control points
         "CTRL_HEAD_TOP": {"radius": 0.08, "type": "head_neck"},
         "CTRL_NOSE": {"radius": 0.03, "type": "head_tracking"},
+
+        # VIRTUAL CONTROL POINTS FOR NECK (ADD THESE)
+        "VIRTUAL_HEAD_BASE": {"radius": 0.06, "type": "head_neck"},
+        "VIRTUAL_SHOULDER_MIDPOINT": {"radius": 0.08, "type": "shoulder"},
     }
 
     # Populate joint_control_systems with actual control point objects
@@ -2075,369 +2079,481 @@ def create_procedural_head(armature_obj, figure_name, garment_config, global_clo
 ##########################################################################################
 
 def create_neck(armature_obj, figure_name, garment_config, global_cloth_settings):
-    """Create stretchy neck garment with coordinated vertex bundles for seamless integration"""
+    """Create neck cylinder - RESET TRANSFORMS AFTER PARENTING"""
+    script_log("=== CREATING NECK CYLINDER - RESET TRANSFORMS ===")
+    script_log("start-create_neck")
+
+    # =========================================================================
+    # STEP 0: GET BONE REST POSE INFORMATION
+    # =========================================================================
+    script_log("STEP 0: GETTING BONE REST POSE INFORMATION")
+
+    bpy.context.view_layer.objects.active = armature_obj
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    neck_bone = armature_obj.data.bones.get("DEF_Neck")
+
+    if not neck_bone:
+        script_log("ERROR: DEF_Neck bone not found for neck creation")
+        return None
+
+    # Get bone REST POSE positions
+    neck_head_rest = neck_bone.head_local
+    neck_tail_rest = neck_bone.tail_local
+    bone_matrix_rest = neck_bone.matrix_local
+
+    script_log(f"DEF_NECK BONE REST POSE:")
+    script_log(f"  DEF_Neck HEAD (rest): {neck_head_rest}")
+    script_log(f"  DEF_Neck TAIL (rest): {neck_tail_rest}")
+
+    # Calculate bone length in rest pose
+    neck_vector_rest = neck_tail_rest - neck_head_rest
+    actual_neck_length_rest = neck_vector_rest.length
+
+    script_log(f"  Rest pose length: {actual_neck_length_rest:.4f}")
+
+    # =========================================================================
+    # STEP 1: CREATE CYLINDER AT WORLD ORIGIN
+    # =========================================================================
+    script_log("STEP 1: CREATING CYLINDER AT WORLD ORIGIN")
+
+    # FIX: Access properties directly from garment_config (assuming it is the 'garment_neck' dict)
+    neck_diameter = garment_config.get("neck_diameter", 0.14)
+    segments = garment_config.get("segments", 12)  # FIX: Use segments from config
+
+    cylinder_depth = actual_neck_length_rest
+
+    # Create cylinder at WORLD ORIGIN
+    bpy.ops.mesh.primitive_cylinder_add(
+        vertices=segments,
+        depth=cylinder_depth,
+        radius=neck_diameter / 2.0,
+        location=(0, 0, 0)  # WORLD ORIGIN
+    )
+    neck_obj = bpy.context.active_object
+    neck_obj.name = f"{figure_name}_Neck"
+
+    script_log(f"  Created cylinder at world origin: {neck_obj.location} with {segments} segments.")
+
+    # =========================================================================
+    # STEP 2: CRITICAL - PARENT TO BONE FIRST
+    # =========================================================================
+    script_log("STEP 2: PARENTING TO DEF_NECK BONE FIRST")
+
+    neck_obj.parent = armature_obj
+    neck_obj.parent_type = 'BONE'
+    neck_obj.parent_bone = "DEF_Neck"
+
+    script_log(f"  Parented to: {neck_obj.parent_bone}")
+
+    # =========================================================================
+    # STEP 3: CRITICAL - RESET TRANSFORMS AFTER PARENTING
+    # =========================================================================
+    script_log("STEP 3: RESETTING TRANSFORMS AFTER PARENTING to align local space with bone's rest pose")
+
+    # Reset ALL transforms to work in bone's local space
+    neck_obj.location = (0, 0, 0)
+    neck_obj.rotation_mode = 'QUATERNION'
+    neck_obj.rotation_quaternion = Quaternion((1.0, 0.0, 0.0, 0.0))  # Identity
+    neck_obj.scale = (1, 1, 1)
+
+    script_log(f"  Reset location: {neck_obj.location}")
+    script_log(f"  Reset rotation: {neck_obj.rotation_quaternion}")
+    script_log(f"  Reset scale: {neck_obj.scale}")
+
+    # =========================================================================
+    # STEP 4: POSITION & ROTATE IN BONE LOCAL SPACE (ALIGNMENT FIX)
+    # =========================================================================
+    script_log("STEP 4: POSITIONING & ROTATING IN BONE LOCAL SPACE (Final Alignment Attempt)")
+
+    # 1. Calculate the rotation required to align the cylinder's Z (length) with the bone's Z.
+    bone_rotation_quat = bone_matrix_rest.to_quaternion()
+    neck_obj.rotation_quaternion = bone_rotation_quat
+
+    # 2. The required translation is a vector that moves the origin (bone head)
+    #    to the bone's center. This translation MUST be expressed in the cylinder's
+    #    *newly rotated local space*.
+
+    #    The vector in cylinder local space is always (0, 0, L/2).
+    #    If the direct (0, 0, L/2) fails, it's because Blender's parenting
+    #    is applying a transformation before our explicit rotation.
+
+    #    Alternative: Calculate the vector that maps the bone's head to its center
+    #    (in Armature space), and then apply the inverse rotation to that vector.
+
+    # Bone center in Armature space:
+    bone_center_armature_space = (neck_head_rest + neck_tail_rest) / 2
+
+    # Vector from parent origin (bone head) to desired center (in Armature space)
+    center_vector_armature_space = neck_head_rest - bone_center_armature_space
+
+    # Transform the vector into the cylinder's *local* space (using the inverse of the rotation we just set)
+    # This is the most robust way to ensure the local coordinates are correct.
+    inverse_rotation = bone_rotation_quat.inverted()
+    local_translation_vector = inverse_rotation @ center_vector_armature_space
+
+    neck_obj.location = local_translation_vector
+
+    script_log(f"  ✓ Applied bone rotation: {neck_obj.rotation_quaternion}")
+    script_log(f"  Local position adjusted via inverse transform: {neck_obj.location}")
+
+    # =========================================================================
+    # STEP 5: REMOVED STRETCH_TO CONSTRAINT (PER USER REQUEST)
+    # =========================================================================
+    script_log("STEP 5: REMOVED STRETCH_TO CONSTRAINT per user request.")
+
+    # Clear any existing constraints (required to ensure no old constraints interfere)
+    for constraint in list(neck_obj.constraints):
+        neck_obj.constraints.remove(constraint)
+
+    # =========================================================================
+    # STEP 6: SIMPLE VERTEX GROUPS (Coordination)
+    # =========================================================================
+    script_log("STEP 6: SETTING UP VERTEX GROUPS")
+
+    # Clear any existing vertex groups
+    for vg in list(neck_obj.vertex_groups):
+        neck_obj.vertex_groups.remove(vg)
+
+    # Create coordination group
+    neck_group = neck_obj.vertex_groups.new(name="DEF_Neck")
+
+    # Full influence throughout for neck bone
+    for i in range(len(neck_obj.data.vertices)):
+        neck_group.add([i], 1.0, 'REPLACE')
+
+    script_log(f"  Weighted {len(neck_obj.data.vertices)} vertices to DEF_Neck (Full 1.0 influence)")
+
+    # =========================================================================
+    # STEP 7: ADD BASIC MODIFIERS AND MATERIALS
+    # =========================================================================
+    script_log("STEP 7: ADDING MODIFIERS AND MATERIALS")
+
+    # Add subdivision
+    subdiv_mod = neck_obj.modifiers.new(name="Subdivision", type='SUBSURF')
+    subdiv_mod.levels = 1
+    subdiv_mod.render_levels = 1
+
+    # Add material
+    apply_material_from_config(neck_obj, "garment_neck", material_name="Neck_Material",
+                               fallback_color=(0.1, 0.3, 0.8, 1.0))
+
+    # =========================================================================
+    # STEP 8: FINAL VERIFICATION (DOUBLE & TRIPLE CHECK)
+    # =========================================================================
+    script_log("STEP 8: FINAL POSITION VERIFICATION (Double & Triple Check)")
+
+    bpy.context.view_layer.update()
+
+    # Get DEF_Neck head/tail world positions (Rest Pose * Armature World)
+    neck_head_world = armature_obj.matrix_world @ neck_bone.head_local
+    neck_tail_world = armature_obj.matrix_world @ neck_bone.tail_local
+
+    # Get cylinder bottom and top positions in local space
+    cylinder_bottom_geom = Vector((0, 0, -actual_neck_length_rest / 2))
+    cylinder_top_geom = Vector((0, 0, actual_neck_length_rest / 2))
+
+    # Cylinder's matrix_world transforms these geometric points
+    cylinder_bottom_world = neck_obj.matrix_world @ cylinder_bottom_geom
+    cylinder_top_world = neck_obj.matrix_world @ cylinder_top_geom
+
+    script_log(f"EXACT POSITION VERIFICATION:")
+    script_log(f"  Cylinder bottom (World): {cylinder_bottom_world}")
+    script_log(f"  DEF_Neck head (World):   {neck_head_world}")
+    script_log(f"  Cylinder top (World):    {cylinder_top_world}")
+    script_log(f"  DEF_Neck tail (World):   {neck_tail_world}")
+
+    bottom_offset = (cylinder_bottom_world - neck_head_world).length
+    top_offset = (cylinder_top_world - neck_tail_world).length
+
+    script_log(f"  Bottom alignment offset: {bottom_offset:.6f}")
+    script_log(f"  Top alignment offset:    {top_offset:.6f}")
+
+    if bottom_offset < 0.001 and top_offset < 0.001:
+        script_log(f"  ✓ PERFECT ALIGNMENT: Both ends match bone positions (Offset < 0.001)")
+    else:
+        script_log(f"  ✗ MISALIGNMENT: Ends don't match bone positions (Offset > 0.001)")
+
+    script_log("=== NECK CYLINDER CREATION COMPLETE ===")
+    script_log("end-create_neck")
+
+    return neck_obj
+
+def create_neck_ORIGINAL(armature_obj, figure_name, garment_config, global_cloth_settings):
+    """Create stretchy neck garment with coordinated vertex bundles"""
     script_log("Creating garment_neck with coordinated vertex bundles...")
 
-    # Get neck bone positions
-    bpy.context.view_layer.objects.active = armature_obj
-    bpy.ops.object.mode_set(mode='POSE')
-
-    try:
-        neck_bone = armature_obj.pose.bones.get("DEF_Neck")
-        head_bone = armature_obj.pose.bones.get("DEF_Head")
-        upper_spine_bone = armature_obj.pose.bones.get("DEF_UpperSpine")
-
-        neck_bone_name = "DEF_Neck"
-        head_bone_name = "DEF_Head"
-        upper_spine_bone_name = "DEF_UpperSpine"
-
-        bpy.ops.object.mode_set(mode='OBJECT')
-
-        if not all([neck_bone, head_bone, upper_spine_bone]):
-            script_log("ERROR: Could not find neck, head, or spine bones")
-            return None
-
-        # Get bone positions in world space
-        neck_base_pos = armature_obj.matrix_world @ neck_bone.head  # Base of neck (shoulders)
-        neck_top_pos = armature_obj.matrix_world @ neck_bone.tail  # Top of neck (head base)
-        head_base_pos = armature_obj.matrix_world @ head_bone.head  # Base of head
-        spine_top_pos = armature_obj.matrix_world @ upper_spine_bone.tail  # Top of spine
-
-        # Get neck dimensions from config
-        puffiness = garment_config.get("puffiness", 1.1)
-        neck_height = garment_config.get("neck_height", 0.08)
-        neck_diameter = garment_config.get("neck_diameter", 0.14)
-        collar_style = garment_config.get("collar_style", "turtleneck")
-
-        # Get neck-shoulder bundle diameter from config
-        neck_spine_diameter = garment_config.get("diameter_spine", 0.18)
-
-        # Get geometry settings
-        geometry_settings = global_cloth_settings.get("geometry_settings", {})
-        base_radii = global_cloth_settings.get("base_radii", {})
-        segments = geometry_settings.get("default_segments", 12)
-
-        # Calculate neck length and radius
-        neck_length = (neck_top_pos - neck_base_pos).length
-        neck_radius = neck_diameter / 2 * puffiness
-
-        script_log(f"DEBUG: Neck garment - Height: {neck_height}, Diameter: {neck_diameter}")
-        script_log(f"DEBUG: Neck garment - Puffiness: {puffiness}, Final radius: {neck_radius}")
-        script_log(f"DEBUG: Neck garment - Collar style: {collar_style}")
-        script_log(f"DEBUG: Neck-spine junction diameter: {neck_spine_diameter}")
-
-        # =========================================================================
-        # STEP 1: CREATE TAPERED NECK CYLINDER USING EXISTING FUNCTION
-        # =========================================================================
-        script_log("DEBUG: Creating tapered neck cylinder...")
-
-        # Get the shoulder midpoint and head base positions
-        shoulder_midpoint = bpy.data.objects.get("VIRTUAL_SHOULDER_MIDPOINT")
-        head_base = bpy.data.objects.get("VIRTUAL_HEAD_BASE")
-
-        if not shoulder_midpoint or not head_base:
-            script_log("ERROR: Missing shoulder midpoint or head base for neck creation")
-            return None
-
-        # Calculate diameters for taper (neck is typically wider at bottom)
-        start_diameter = neck_spine_diameter  # Bottom diameter at shoulders
-        end_diameter = neck_diameter  # Top diameter at head base
-
-        # Use the existing function to create properly oriented tapered cylinder
-        neck_obj = create_tapered_cylinder(
-            name=f"{figure_name}_Neck",
-            start_diameter=start_diameter,
-            end_diameter=end_diameter,
-            segments=segments,
-            start_location=shoulder_midpoint.location,  # Bottom at shoulders
-            end_location=head_base.location  # Top at head base
-        )
-
-        script_log(f"✓ Created tapered neck cylinder")
-        script_log(f"✓ Bottom diameter: {start_diameter} at shoulder")
-        script_log(f"✓ Top diameter: {end_diameter} at head base")
-        script_log(f"✓ Automatically oriented from shoulder to head base")
-
-        # =========================================================================
-        # STEP 2: PARENT TO SHOULDER MIDPOINT
-        # =========================================================================
-        script_log("DEBUG: Setting up neck parenting to shoulder midpoint...")
-
-        neck_obj.parent = shoulder_midpoint
-        neck_obj.location = (0, 0, 0)  # Reset to parent location
-        neck_obj.rotation_euler = (0, 0, 0)  # Reset rotation since parent handles it
-
-        script_log(f"✓ Neck parented to {shoulder_midpoint.name}")
-
-        # =========================================================================
-        # STEP 3: ADD STRETCH-TO CONSTRAINT TO FOLLOW HEAD BASE
-        # =========================================================================
-        script_log("DEBUG: Adding stretch-to constraint for head base following...")
-
-        # Clear any existing constraints
-        for constraint in list(neck_obj.constraints):
-            neck_obj.constraints.remove(constraint)
-
-        # Add stretch-to constraint to make neck extend toward HEAD BASE
-        stretch_constraint = neck_obj.constraints.new('STRETCH_TO')
-        stretch_constraint.name = "Stretch_To_Head_Base"
-        stretch_constraint.target = head_base
-        stretch_constraint.rest_length = neck_length
-        stretch_constraint.volume = 'NO_VOLUME'
-        stretch_constraint.influence = 1.0
-
-        # Force update to ensure constraint is active
-        bpy.context.view_layer.update()
-
-        # VERIFY the constraint is working
-        script_log("=== STRETCH_TO CONSTRAINT VERIFICATION ===")
-        script_log(f"Neck object: {neck_obj.name}")
-        script_log(f"Neck location: {neck_obj.location}")
-        script_log(f"Stretch target: {stretch_constraint.target.name if stretch_constraint.target else 'NONE'}")
-        script_log(f"Target location: {head_base.location}")
-        script_log(f"Rest length: {stretch_constraint.rest_length}")
-        script_log(f"Constraint influence: {stretch_constraint.influence}")
-
-        # Calculate expected stretch direction
-        stretch_vector = head_base.location - neck_obj.location
-        script_log(f"Expected stretch direction: {stretch_vector}")
-        script_log(f"Expected stretch distance: {stretch_vector.length}")
-
-        script_log("✓ Neck 100% STRETCH_TO constraint targeting VIRTUAL_HEAD_BASE")
-
-        # =========================================================================
-        # STEP 4: SETUP VERTEX GROUPS FOR CLOTH SIMULATION ONLY
-        # =========================================================================
-        script_log("DEBUG: Setting up neck vertex groups for cloth simulation...")
-
-        # Clear any existing vertex groups
-        for vg in list(neck_obj.vertex_groups):
-            neck_obj.vertex_groups.remove(vg)
-
-        # Remove any existing armature modifiers
-        for mod in list(neck_obj.modifiers):
-            if mod.type == 'ARMATURE':
-                neck_obj.modifiers.remove(mod)
-
-        # Calculate local positions for vertex bundles
-        # The create_tapered_cylinder function creates cylinder with:
-        # - Local Z=0 at top (head base)
-        # - Local Z=length at bottom (shoulders)
-        head_neck_center_local = Vector((0, 0, 0))  # Top of neck (head base) in local space
-        neck_spine_center_local = Vector((0, 0, neck_length))  # Bottom of neck (shoulders) in local space
-
-        # Calculate appropriate radii in local space
-        head_neck_radius_local = end_diameter / 2 * 1.2  # Top radius
-        neck_spine_radius_local = start_diameter / 2  # Bottom radius
-
-        script_log(f"✓ Using local coordinate bundle system:")
-        script_log(f"  - Head-neck (local top): {head_neck_center_local}, radius: {head_neck_radius_local}")
-        script_log(f"  - Neck-spine (local bottom): {neck_spine_center_local}, radius: {neck_spine_radius_local}")
-
-        # Create coordination groups for cloth pinning only (no bone groups needed)
-        head_coordination_group = neck_obj.vertex_groups.new(name="Head_Coordination_Neck")
-        spine_coordination_group = neck_obj.vertex_groups.new(name="Spine_Coordination_Neck")
-
-        # Calculate bundle radii for influence
-        head_neck_sphere_radius = head_neck_radius_local * 1.5
-        neck_spine_sphere_radius = neck_spine_radius_local * 1.5
-
-        # =========================================================================
-        # STEP 5: APPLY HEAD-NECK BUNDLE WEIGHTS (TOP OF NECK)
-        # =========================================================================
-        script_log("DEBUG: Applying head-neck bundle weights to neck top...")
-
-        head_neck_vertices = 0
-        for i, vertex in enumerate(neck_obj.data.vertices):
-            vert_pos_local = vertex.co  # Local coordinates since object is parented
-
-            # HEAD-NECK BUNDLE (top of neck)
-            distance_to_head = (vert_pos_local - head_neck_center_local).length
-            if distance_to_head <= head_neck_sphere_radius:
-                weight = 1.0 - (distance_to_head / head_neck_sphere_radius)
-                weight = weight * weight  # Quadratic falloff
-
-                # Stronger weight for top vertices (near Z=0)
-                if vert_pos_local.z < neck_length * 0.3:  # Top third (near head base)
-                    weight *= 1.2
-                elif vert_pos_local.z < neck_length * 0.6:  # Middle third
-                    weight *= 1.0
-                else:  # Bottom third (near shoulders)
-                    weight *= 0.6
-
-                weight = min(weight, 1.0)
-
-                if weight > 0.1:
-                    head_coordination_group.add([i], weight, 'REPLACE')
-                    head_neck_vertices += 1
-
-        # =========================================================================
-        # STEP 6: APPLY NECK-SPINE BUNDLE WEIGHTS (BOTTOM OF NECK)
-        # =========================================================================
-        script_log("DEBUG: Applying neck-spine bundle weights to neck base...")
-
-        neck_spine_vertices = 0
-        for i, vertex in enumerate(neck_obj.data.vertices):
-            vert_pos_local = vertex.co  # Local coordinates since object is parented
-
-            # NECK-SPINE BUNDLE (bottom of neck)
-            distance_to_spine = (vert_pos_local - neck_spine_center_local).length
-            if distance_to_spine <= neck_spine_sphere_radius:
-                weight = 1.0 - (distance_to_spine / neck_spine_sphere_radius)
-                weight = weight * weight  # Quadratic falloff
-
-                # Stronger weight for bottom vertices (near Z=neck_length)
-                if vert_pos_local.z > neck_length * 0.7:  # Bottom third (near shoulders)
-                    weight *= 1.2
-                elif vert_pos_local.z > neck_length * 0.4:  # Middle third
-                    weight *= 1.0
-                else:  # Top third (near head base)
-                    weight *= 0.4
-
-                weight = min(weight, 1.0)
-
-                if weight > 0.1:
-                    spine_coordination_group.add([i], weight, 'REPLACE')
-                    neck_spine_vertices += 1
-
-        script_log(f"✓ Applied head-neck bundle to {head_neck_vertices} vertices")
-        script_log(f"✓ Applied neck-spine bundle to {neck_spine_vertices} vertices")
-
-        # =========================================================================
-        # STEP 7: SIMPLIFIED DYNAMIC VERTEX WEIGHTING
-        # =========================================================================
-        script_log("DEBUG: Adding simplified dynamic vertex weighting to neck...")
-
-        # Create a simple dynamic weighting system that doesn't rely on external functions
-        dynamic_weight_group = neck_obj.vertex_groups.new(name="Dynamic_Weight_Neck")
-
-        for i, vertex in enumerate(neck_obj.data.vertices):
-            vert_pos_local = vertex.co  # Use local coordinates
-
-            # Calculate distance to both bundle centers IN LOCAL SPACE
-            dist_to_head = (vert_pos_local - head_neck_center_local).length
-            dist_to_spine = (vert_pos_local - neck_spine_center_local).length
-
-            # Calculate weights based on proximity to bundles
-            head_weight = max(0, 1.0 - (dist_to_head / head_neck_sphere_radius))
-            spine_weight = max(0, 1.0 - (dist_to_spine / neck_spine_sphere_radius))
-
-            # Use the stronger of the two weights
-            dynamic_weight = max(head_weight, spine_weight)
-
-            if dynamic_weight > 0.1:
-                dynamic_weight_group.add([i], dynamic_weight, 'REPLACE')
-
-        script_log("✓ Added simplified dynamic vertex weighting")
-
-        # =========================================================================
-        # STEP 8: NO ARMARTURE MODIFIER - USING PARENTING + CONSTRAINTS INSTEAD
-        # =========================================================================
-        script_log("DEBUG: Using parenting + constraints for animation (no armature modifier)")
-
-        # =========================================================================
-        # STEP 9: ADD CLOTH SIMULATION FOR STRETCHY FABRIC
-        # =========================================================================
-        script_log("DEBUG: Adding stretchy cloth simulation to neck...")
-        cloth_settings = garment_config.get("cloth_settings", {})
-
-        if cloth_settings.get("enabled", True):
-            cloth_mod = neck_obj.modifiers.new(name="Cloth", type='CLOTH')
-            cloth_mod.settings.quality = cloth_settings.get("quality", 6)
-            cloth_mod.settings.mass = cloth_settings.get("mass", 0.3)
-            cloth_mod.settings.tension_stiffness = cloth_settings.get("tension_stiffness", 5.0)
-            cloth_mod.settings.compression_stiffness = cloth_settings.get("compression_stiffness", 4.0)
-            cloth_mod.settings.shear_stiffness = cloth_settings.get("shear_stiffness", 3.0)
-            cloth_mod.settings.bending_stiffness = cloth_settings.get("bending_stiffness", 0.5)
-            cloth_mod.settings.air_damping = cloth_settings.get("air_damping", 1.0)
-
-            # Create combined coordination group for cloth pinning
-            combined_coordination_group = neck_obj.vertex_groups.new(name="Neck_Combined_Coordination")
-
-            for i in range(len(neck_obj.data.vertices)):
-                max_weight = 0.0
-
-                # Check head coordination weight
-                try:
-                    head_weight = head_coordination_group.weight(i)
-                    max_weight = max(max_weight, head_weight)
-                except:
-                    pass
-
-                # Check spine coordination weight
-                try:
-                    spine_weight = spine_coordination_group.weight(i)
-                    max_weight = max(max_weight, spine_weight)
-                except:
-                    pass
-
-                if max_weight > 0.1:
-                    combined_coordination_group.add([i], max_weight, 'REPLACE')
-
-            cloth_mod.settings.vertex_group_mass = "Neck_Combined_Coordination"
-
-            script_log("✓ Added stretchy cloth simulation to garment_neck")
-            script_log("✓ Cloth pinned to combined head-spine coordination groups")
-        else:
-            script_log("DEBUG: Cloth simulation disabled for neck")
-
-        # =========================================================================
-        # STEP 10: ADD SUBDIVISION AND MATERIALS
-        # =========================================================================
-        script_log("DEBUG: Adding subdivision and materials...")
-
-        # Add subdivision for smoother fabric
-        subdiv_mod = neck_obj.modifiers.new(name="Subdivision", type='SUBSURF')
-        subdiv_mod.levels = 1
-        subdiv_mod.render_levels = 1
-
-        # Use the existing material application function
-        apply_material_from_config(neck_obj, "garment_neck", material_name="Neck_Material",
-                                   fallback_color=(0.1, 0.3, 0.8, 1.0))
-
-        # =========================================================================
-        # STEP 11: SET MODIFIER ORDER
-        # =========================================================================
-        script_log("DEBUG: Setting modifier order...")
-
-        bpy.context.view_layer.objects.active = neck_obj
-        modifiers = neck_obj.modifiers
-
-        # Ensure order: Subdivision → Cloth
-        correct_order = ["Subdivision", "Cloth"]
-        for mod_name in correct_order:
-            mod_index = modifiers.find(mod_name)
-            if mod_index >= 0:
-                while mod_index > correct_order.index(mod_name):
-                    bpy.ops.object.modifier_move_up(modifier=mod_name)
-                    mod_index -= 1
-
-        # =========================================================================
-        # STEP 12: FINAL VERIFICATION
-        # =========================================================================
-        bpy.context.view_layer.update()
-
-        script_log("=== GARMENT_NECK CREATION COMPLETE ===")
-        script_log(f"✓ Neck positioned along neck bone")
-        script_log(f"✓ Neck radius: {neck_radius}, Length: {neck_length:.3f}")
-        script_log(f"✓ Neck-spine junction diameter: {neck_spine_diameter}")
-        script_log(f"✓ Stretchy cloth simulation: {'ENABLED' if cloth_settings.get('enabled', True) else 'DISABLED'}")
-        script_log(f"✓ Collar style: {collar_style}")
-        script_log(f"✓ Neck parented to shoulder midpoint for animation sync")
-        script_log(f"✓ Neck stretch-to constraint targeting head base")
-        script_log(f"✓ BUNDLE SYSTEM: Using local coordinates")
-        script_log(f"✓ Head-neck vertices: {head_neck_vertices}, Neck-spine vertices: {neck_spine_vertices}")
-        script_log(f"✓ Dynamic vertex weighting: ENABLED")
-        script_log(f"✓ Seamless integration: Head connection + Spine/shoulder coordination")
-
-        return neck_obj
-
-    except Exception as e:
-        script_log(f"ERROR creating garment_neck: {e}")
-        import traceback
-        script_log(f"Traceback: {traceback.format_exc()}")
-        bpy.ops.object.mode_set(mode='OBJECT')
+    # Get virtual control point objects directly
+    head_base_obj = bpy.data.objects.get("VIRTUAL_HEAD_BASE")
+    shoulder_midpoint_obj = bpy.data.objects.get("VIRTUAL_SHOULDER_MIDPOINT")
+
+    if not head_base_obj or not shoulder_midpoint_obj:
+        script_log("ERROR: Missing virtual control point objects for neck creation")
         return None
+
+    # Use object locations directly
+    head_base_center = head_base_obj.location
+    shoulder_center = shoulder_midpoint_obj.location
+
+    # Calculate neck direction and length
+    neck_direction = (head_base_center - shoulder_center).normalized()
+    neck_length = (head_base_center - shoulder_center).length
+
+    # Get neck dimensions from config
+    puffiness = garment_config.get("puffiness", 1.1)
+    neck_diameter = garment_config.get("neck_diameter", 0.14)
+    neck_spine_diameter = garment_config.get("diameter_spine", 0.18)
+
+    # Get geometry settings
+    geometry_settings = global_cloth_settings.get("geometry_settings", {})
+    segments = geometry_settings.get("default_segments", 12)
+
+    # Calculate diameters for taper
+    start_diameter = neck_spine_diameter  # Bottom diameter at shoulders
+    end_diameter = neck_diameter  # Top diameter at head base
+
+    script_log(f"DEBUG: Neck length: {neck_length:.3f}")
+    script_log(f"DEBUG: Neck direction: {neck_direction}")
+    script_log(f"DEBUG: Shoulder position: {shoulder_center}")
+    script_log(f"DEBUG: Head base position: {head_base_center}")
+
+    # =========================================================================
+    # STEP 1: CREATE NECK CYLINDER AT SHOULDER POSITION WITH PROPER ROTATION
+    # =========================================================================
+    script_log("DEBUG: Creating neck cylinder with proper rotation...")
+
+    # Create cylinder at shoulder position
+    bpy.ops.mesh.primitive_cylinder_add(
+        vertices=segments,
+        depth=neck_length,
+        radius=start_diameter / 2.0,
+        location=shoulder_center
+    )
+    neck_obj = bpy.context.active_object
+    neck_obj.name = f"{figure_name}_Neck"
+
+    # Rotate cylinder to point from shoulder to head base
+    # Default cylinder points up (Z-axis), we need to rotate it to match neck_direction
+    up_vector = Vector((0, 0, 1))
+
+    # Only rotate if the direction is significantly different from up
+    if neck_direction.angle(up_vector) > 0.001:
+        rotation_quat = up_vector.rotation_difference(neck_direction)
+        neck_obj.rotation_mode = 'QUATERNION'
+        neck_obj.rotation_quaternion = rotation_quat
+        script_log(f"✓ Rotated cylinder to track head base: {neck_obj.rotation_quaternion}")
+    else:
+        script_log("✓ Cylinder is vertical (no rotation needed)")
+
+    # Move cylinder so bottom is at shoulder and top extends toward head
+    # After rotation, the cylinder's local Z-axis points toward head_base
+    # We need to move it along its local Z-axis by half its length
+    local_offset = Vector((0, 0, neck_length / 2))
+    world_offset = neck_obj.matrix_world @ local_offset - neck_obj.matrix_world @ Vector((0, 0, 0))
+    neck_obj.location += world_offset
+
+    script_log(f"✓ Final cylinder location: {neck_obj.location}")
+    script_log(f"✓ Final cylinder rotation: {neck_obj.rotation_quaternion}")
+
+    # Apply taper if needed
+    if abs(start_diameter - end_diameter) > 0.001:
+        taper_factor = end_diameter / start_diameter
+        taper_modifier = neck_obj.modifiers.new(name="Taper", type='SIMPLE_DEFORM')
+        taper_modifier.deform_method = 'TAPER'
+        taper_modifier.factor = taper_factor - 1.0
+        taper_modifier.deform_axis = 'Z'
+
+        # Apply the taper modifier
+        bpy.context.view_layer.objects.active = neck_obj
+        bpy.ops.object.modifier_apply(modifier="Taper")
+
+    # =========================================================================
+    # STEP 2: SETUP TRANSFORM CONSTRAINTS FOR DYNAMIC TRACKING
+    # =========================================================================
+    script_log("DEBUG: Setting up transform constraints for dynamic tracking...")
+
+    # Clear any existing constraints
+    for constraint in list(neck_obj.constraints):
+        neck_obj.constraints.remove(constraint)
+
+    # CONSTRAINT 1: COPY_LOCATION to shoulder midpoint (base position)
+    copy_location = neck_obj.constraints.new('COPY_LOCATION')
+    copy_location.target = shoulder_midpoint_obj
+    copy_location.use_offset = True
+    copy_location.influence = 1.0
+
+    # CONSTRAINT 2: STRETCH_TO to head base (length and rotation)
+    stretch_constraint = neck_obj.constraints.new('STRETCH_TO')
+    stretch_constraint.target = head_base_obj
+    stretch_constraint.rest_length = neck_length
+    stretch_constraint.volume = 'NO_VOLUME'
+    stretch_constraint.influence = 1.0
+
+    # CONSTRAINT 3: DAMPED_TRACK to ensure proper rotation (backup)
+    damped_track = neck_obj.constraints.new('DAMPED_TRACK')
+    damped_track.target = head_base_obj
+    damped_track.track_axis = 'TRACK_Z'
+    damped_track.influence = 0.3  # Light influence to help STRETCH_TO
+
+    script_log(f"✓ COPY_LOCATION constraint to shoulder midpoint")
+    script_log(f"✓ STRETCH_TO constraint to head base (main rotation)")
+    script_log(f"✓ DAMPED_TRACK constraint to head base (backup rotation)")
+
+    # =========================================================================
+    # STEP 3: SETUP VERTEX GROUPS WITH PROPER LOCAL COORDINATES
+    # =========================================================================
+    script_log("DEBUG: Setting up neck vertex groups...")
+
+    # Clear any existing vertex groups
+    for vg in list(neck_obj.vertex_groups):
+        neck_obj.vertex_groups.remove(vg)
+
+    # Remove any existing armature modifiers
+    for mod in list(neck_obj.modifiers):
+        if mod.type == 'ARMATURE':
+            neck_obj.modifiers.remove(mod)
+
+    # Define bundle centers in LOCAL SPACE (cylinder is along Z-axis after rotation)
+    # Bottom of cylinder (shoulder attachment) is at local Z = -neck_length/2
+    # Top of cylinder (head attachment) is at local Z = neck_length/2
+    shoulder_local = Vector((0, 0, -neck_length / 2))
+    head_base_local = Vector((0, 0, neck_length / 2))
+
+    # Use larger radii to ensure vertices get weighted
+    shoulder_radius = start_diameter * 0.8  # 80% of diameter
+    head_base_radius = end_diameter * 0.8  # 80% of diameter
+
+    # Create coordination groups
+    head_coordination_group = neck_obj.vertex_groups.new(name="Head_Coordination_Neck")
+    shoulder_coordination_group = neck_obj.vertex_groups.new(name="Shoulder_Coordination_Neck")
+
+    script_log(f"✓ Local coordinates - Shoulder: {shoulder_local}, Head: {head_base_local}")
+    script_log(f"✓ Using radii - Shoulder: {shoulder_radius}, Head: {head_base_radius}")
+
+    # =========================================================================
+    # STEP 4: APPLY VERTEX WEIGHTS USING SIMPLE Z-POSITION
+    # =========================================================================
+    script_log("DEBUG: Applying vertex weights using Z-position...")
+
+    head_vertices = 0
+    shoulder_vertices = 0
+
+    for i, vertex in enumerate(neck_obj.data.vertices):
+        vert_pos_local = vertex.co
+
+        # Simple weight based on Z position in local space
+        # Normalize Z from -neck_length/2 to +neck_length/2 to 0-1
+        normalized_z = (vert_pos_local.z + neck_length / 2) / neck_length
+
+        # Head weight: 1 at top, 0 at bottom
+        head_weight = normalized_z
+        head_weight = head_weight * head_weight  # Quadratic falloff
+
+        # Shoulder weight: 1 at bottom, 0 at top
+        shoulder_weight = 1.0 - normalized_z
+        shoulder_weight = shoulder_weight * shoulder_weight  # Quadratic falloff
+
+        # Apply weights with threshold
+        if head_weight > 0.1:
+            head_coordination_group.add([i], head_weight, 'REPLACE')
+            head_vertices += 1
+
+        if shoulder_weight > 0.1:
+            shoulder_coordination_group.add([i], shoulder_weight, 'REPLACE')
+            shoulder_vertices += 1
+
+        # Ensure all vertices have at least some weight
+        if head_weight <= 0.1 and shoulder_weight <= 0.1:
+            # Middle vertices get balanced weight
+            head_coordination_group.add([i], 0.5, 'REPLACE')
+            shoulder_coordination_group.add([i], 0.5, 'REPLACE')
+
+    script_log(f"✓ Applied head coordination to {head_vertices} vertices")
+    script_log(f"✓ Applied shoulder coordination to {shoulder_vertices} vertices")
+    script_log(f"✓ Total vertices: {len(neck_obj.data.vertices)}")
+
+    # =========================================================================
+    # STEP 5: ADD CLOTH SIMULATION
+    # =========================================================================
+    script_log("DEBUG: Adding cloth simulation...")
+    cloth_settings = garment_config.get("cloth_settings", {})
+
+    if cloth_settings.get("enabled", True):
+        cloth_mod = neck_obj.modifiers.new(name="Cloth", type='CLOTH')
+        cloth_mod.settings.quality = cloth_settings.get("quality", 6)
+        cloth_mod.settings.mass = cloth_settings.get("mass", 0.3)
+        cloth_mod.settings.tension_stiffness = cloth_settings.get("tension_stiffness", 5.0)
+        cloth_mod.settings.compression_stiffness = cloth_settings.get("compression_stiffness", 4.0)
+        cloth_mod.settings.shear_stiffness = cloth_settings.get("shear_stiffness", 3.0)
+        cloth_mod.settings.bending_stiffness = cloth_settings.get("bending_stiffness", 0.5)
+        cloth_mod.settings.air_damping = cloth_settings.get("air_damping", 1.0)
+
+        # Use combined coordination for cloth
+        combined_coordination_group = neck_obj.vertex_groups.new(name="Neck_Combined_Coordination")
+
+        for i in range(len(neck_obj.data.vertices)):
+            # Use whichever coordination is stronger
+            try:
+                head_weight = head_coordination_group.weight(i)
+                shoulder_weight = shoulder_coordination_group.weight(i)
+                combined_weight = max(head_weight, shoulder_weight)
+                if combined_weight > 0.1:
+                    combined_coordination_group.add([i], combined_weight, 'REPLACE')
+            except:
+                pass
+
+        cloth_mod.settings.vertex_group_mass = "Neck_Combined_Coordination"
+        script_log("✓ Added cloth simulation with combined coordination")
+
+    # =========================================================================
+    # STEP 6: ADD SUBDIVISION AND MATERIALS
+    # =========================================================================
+    script_log("DEBUG: Adding subdivision and materials...")
+
+    # Add subdivision
+    subdiv_mod = neck_obj.modifiers.new(name="Subdivision", type='SUBSURF')
+    subdiv_mod.levels = 1
+    subdiv_mod.render_levels = 1
+
+    # Apply material
+    apply_material_from_config(neck_obj, "garment_neck", material_name="Neck_Material",
+                               fallback_color=(0.1, 0.3, 0.8, 1.0))
+
+    # =========================================================================
+    # STEP 7: SET MODIFIER ORDER
+    # =========================================================================
+    script_log("DEBUG: Setting modifier order...")
+    bpy.context.view_layer.objects.active = neck_obj
+
+    # Ensure order: Subdivision → Cloth
+    modifiers = neck_obj.modifiers
+    correct_order = ["Subdivision", "Cloth"]
+    for mod_name in correct_order:
+        mod_index = modifiers.find(mod_name)
+        if mod_index >= 0:
+            while mod_index > correct_order.index(mod_name):
+                bpy.ops.object.modifier_move_up(modifier=mod_name)
+                mod_index -= 1
+
+    # =========================================================================
+    # STEP 8: FINAL VERIFICATION
+    # =========================================================================
+    bpy.context.view_layer.update()
+
+    # Verify the neck is positioned correctly
+    distance_to_shoulder = (neck_obj.location - shoulder_center).length
+    distance_to_head = (neck_obj.location - head_base_center).length
+
+    script_log("=== GARMENT_NECK CREATION COMPLETE ===")
+    script_log(f"✓ Neck length: {neck_length:.3f}")
+    script_log(f"✓ Distance to shoulder: {distance_to_shoulder:.3f}")
+    script_log(f"✓ Distance to head base: {distance_to_head:.3f}")
+    script_log(f"✓ Base diameter: {start_diameter}, Top diameter: {end_diameter}")
+    script_log(f"✓ Head coordination vertices: {head_vertices}")
+    script_log(f"✓ Shoulder coordination vertices: {shoulder_vertices}")
+    script_log(f"✓ Cylinder rotates to track head base during animation")
+
+    return neck_obj
 
 ##########################################################################################
 
@@ -4889,28 +5005,19 @@ def calculate_midpoint(frame_data, landmark_names):
     if not landmark_names:
         return Vector((0, 0, 0))
 
-    script_log(f"=== DEBUG calculate_midpoint ===")
-    script_log(f"Landmarks requested: {landmark_names}")
-    script_log(f"Frame data keys available: {list(frame_data.keys())}")
-
     total_vec = Vector((0, 0, 0))
     valid_points = 0
 
     for mp_name in landmark_names:
         if mp_name in frame_data:
             pos_data = frame_data[mp_name]
-            script_log(f"✓ Found {mp_name}: x={pos_data['x']}, y={pos_data['y']}, z={pos_data['z']}")
             total_vec += Vector((pos_data["x"], pos_data["y"], pos_data["z"]))
             valid_points += 1
         else:
-            script_log(f"✗ MISSING {mp_name} in frame_data")
+            script_log(f"ERROR: calculate_midpoint MISSING {mp_name} in frame_data")
+            return None
 
     result = total_vec / valid_points if valid_points > 0 else Vector((0, 0, 0))
-
-    script_log(f"DEBUG: Total valid points: {valid_points}")
-    script_log(f"DEBUG: Sum vector: {total_vec}")
-    script_log(f"DEBUG: Final midpoint: {result}")
-    script_log("=== END DEBUG calculate_midpoint ===")
 
     return result
 

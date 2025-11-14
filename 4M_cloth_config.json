@@ -231,6 +231,7 @@
       "neck_diameter": 0.14,
       "diameter_spine": 0.18,
       "collar_style": "turtleneck",
+      "segments": 32,
       "material": {
         "color": [0.1, 0.3, 0.8, 1.0],
         "roughness": 0.7,
