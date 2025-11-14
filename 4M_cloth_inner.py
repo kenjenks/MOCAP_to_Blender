@@ -382,9 +382,11 @@ def apply_material_from_config(obj, config_key, material_name=None, fallback_col
         material_name: Optional custom material name, defaults to f"{config_key}_Material"
         fallback_color: RGBA fallback color if not specified in config
     """
-    # Get material configuration
+    # Get the specific garment configuration
     garment_config = garment_configs.get(config_key, {})
-    material_config = garment_configs.get("material", {})
+
+    # Get material configuration FROM THE GARMENT CONFIG, not top-level
+    material_config = garment_config.get("material", {})
 
     # Use provided name or generate from config key
     if material_name is None:
@@ -438,6 +440,7 @@ def apply_material_from_config(obj, config_key, material_name=None, fallback_col
     obj.data.materials.append(material)
 
     script_log(f"✓ Applied material '{material_name}' to {obj.name}")
+    script_log(f"✓ Color: {material_color}, Roughness: {roughness}, Metallic: {metallic}")
     return material
 
 ##########################################################################################
