@@ -6192,20 +6192,6 @@ def setup_direct_constraints(armature_obj, figure_name="Main"):
 
                     script_log(f"Created CTRL_NOSE at {nose_pos}")
 
-                # Switch back to POSE mode to continue adding constraints
-                bpy.context.view_layer.objects.active = armature_obj
-                bpy.ops.object.mode_set(mode='POSE')
-
-            if nose_obj:
-                # Add DAMPED_TRACK constraint to make head aim toward nose control point
-                damped_track = head_bone.constraints.new('DAMPED_TRACK')
-                damped_track.target = nose_obj
-                damped_track.track_axis = 'TRACK_Y'  # Adjust based on head bone orientation
-                damped_track.influence = 1.0
-
-                constraints_added += 1
-                script_log(f"DEF_Head DAMPED_TRACK → CTRL_NOSE (head follows nose orientation)")
-
     bpy.ops.object.mode_set(mode='OBJECT')
     script_log(f"Direct constraints: {constraints_added} constraints added")
     return constraints_added
