@@ -62,7 +62,7 @@ def main_execution():
         populate_joint_control_systems()
         make_vertex_all_bundles(armature_obj)
         verify_rpy_empty_parenting()
-        garments_created = create_cloth_garments(armature_obj, figure_name)
+        garments_created = None # WAS: create_cloth_garments(armature_obj, figure_name)
 
         # 8. Force initial constraint solve
         bpy.context.view_layer.objects.active = armature_obj
@@ -4049,6 +4049,17 @@ def create_mitten(armature_obj, figure_name, garment_config, global_cloth_settin
         return None
 
 ##########################################################################################
+def string_object_rotation(obj):
+    # Get the global rotation from the world matrix
+    global_rot_euler = obj.matrix_world.to_euler('XYZ')
+
+    rot_x_deg = math.degrees(global_rot_euler.x)
+    rot_y_deg = math.degrees(global_rot_euler.y)
+    rot_z_deg = math.degrees(global_rot_euler.z)
+
+    return f"Global X={rot_x_deg:.1f}°, Y={rot_y_deg:.1f}°, Z={rot_z_deg:.1f}°"
+
+##########################################################################################
 
 def create_coat(armature_obj, figure_name):
     """Create coat torso garment with shoulder coordination and length variations using XYZ empties for pinning"""
@@ -4439,56 +4450,87 @@ def create_coat(armature_obj, figure_name):
                     right_shoulder_vertices.append(vert.index)
 
         # =========================================================================
-        # STEP 8: USE DAMPED TRACK AND STRETCH-TO CONSTRAINTS FOR PROPER ROTATION AND PINNING
+        # STEP 8: POSITION, SCALE, AND Y/Z ROTATION CONSTRAINT
         # =========================================================================
-        script_log("DEBUG: Setting up proper rotation and pinning constraints...")
+        script_log("DEBUG: Setting up constraints for centering, width, and Y/Z rotation with custom offsets...")
 
-        # Create a control empty at the shoulder center
-        shoulder_center = (
-                                  left_shoulder_xyz_empty.matrix_world.translation + right_shoulder_xyz_empty.matrix_world.translation) / 2
+        # 1. Create control empty at the shoulder center (initial position only)
+        shoulder_midpoint = bpy.data.objects.get("VIRTUAL_SHOULDER_MIDPOINT")
 
+        script_log(f"VIRTUAL_SHOULDER_MIDPOINT rotation (Deg): {string_object_rotation(shoulder_midpoint)}°")
+
+        shoulder_center = shoulder_midpoint.matrix_world.translation
+
+        # --- Create a static empty to hold the rotation ---
+        bpy.ops.object.empty_add(type='PLAIN_AXES', location=shoulder_center)
+        coat_static_offset = bpy.context.active_object
+        coat_static_offset.name = f"{figure_name}_Coat_Static_Offset"
+        coat_static_offset.rotation_euler = (0, 0, 0)  # Apply the rotation here
+        coat_static_offset.location = (0, 0, 0)
+        script_log("✓ Created static offset empty to control rotation.")
+
+        # --- Existing: Create the control empty (coat_control) ---
         bpy.ops.object.empty_add(type='PLAIN_AXES', location=shoulder_center)
         coat_control = bpy.context.active_object
         coat_control.name = f"{figure_name}_Coat_Control"
+        coat_control.parent = shoulder_midpoint
+        coat_control.location = (0, 0, 0)  # Clear local translation
+        coat_control.rotation_euler = (0, 0, 0)
 
-        # PARENTING: Parent the coat to this control
+        script_log(f"coat_control rotation (Deg): {string_object_rotation(coat_control)}°")
+        script_log(f"left_shoulder_xyz_empty rotation (Deg): {string_object_rotation(left_shoulder_xyz_empty)}°")
+        script_log(f"right_shoulder_xyz_empty rotation (Deg): {string_object_rotation(right_shoulder_xyz_empty)}°")
+
+        # 2. Parent coat objects to the CONSTRAINED empty (coat_control)
         coat_obj.parent = coat_control
-
-        # Apply rotation and position offsets to COAT ONLY
-        coat_obj.rotation_euler = (0, 0, math.radians(90))  # 90° rotation around Z-axis
-        coat_obj.location = (0, shoulder_width / 2.0, -coat_height / 2.0)
-
-        # PARENT THE HORIZONTAL CYLINDER TO THE COAT CONTROL INSTEAD OF USING CONSTRAINTS
+        coat_obj.rotation_euler = (0, 0, 0)
+        coat_control.location = (0, 0, 0)  # Clear local translation
         horizontal_cylinder.parent = coat_control
-        horizontal_cylinder.location = (0, shoulder_width / 2.0, 0)  # Relative to parent
-        horizontal_cylinder.rotation_euler = (math.radians(90), 0, 0)  # Fixed rotation relative to parent
+        horizontal_cylinder.rotation_euler = (0, 0, 0)
+        horizontal_cylinder.location = (0, 0, 0)  # Clear local translation
 
-        script_log(f"✓ Coat offset by -Z {coat_height / 2.0:.3f} to align left shoulder with left shoulder empty")
-        script_log("✓ Horizontal cylinder parented to coat control with fixed rotation")
+        # 3. Apply your manually tested local rotation and position offsets
+        # These offsets fix the initial alignment relative to the coat_control empty.
+        coat_obj.rotation_euler = (0, 0, 0)
+        coat_obj.location = (0, 0, -coat_height / 2.0)
+        horizontal_cylinder.location = (0, 0, 0)
+        horizontal_cylinder.rotation_euler = (0, math.radians(90), 0)
+        script_log(f"✓ Coat and Cylinder offsets applied using manually tested values.")
 
-        # CONSTRAINT 1: DAMPED TRACK to make coat rotate with shoulder line
-        damped_track = coat_control.constraints.new(type='DAMPED_TRACK')
-        damped_track.target = right_shoulder_xyz_empty  # Track towards right shoulder
-        damped_track.track_axis = 'TRACK_X'  # Track along the shoulder line
+        # --- CONSTRAINTS ON coat_control ---
+        # These constraints determine the real-time position, scale, and Y/Z rotation.
 
-        # CONSTRAINT 2: COPY LOCATION from left shoulder (primary anchor)
-        copy_left = coat_control.constraints.new(type='COPY_LOCATION')
-        copy_left.target = left_shoulder_xyz_empty
-        copy_left.influence = 1.0  # Full influence from left shoulder
+        # CONSTRAINT 1 & 2: COPY LOCATION (For precise centering/translation)
+        copy_center_left = coat_control.constraints.new(type='COPY_LOCATION')
+        copy_center_left.target = left_shoulder_xyz_empty
+        copy_center_left.influence = 0.5
+        copy_center_right = coat_control.constraints.new(type='COPY_LOCATION')
+        copy_center_right.target = right_shoulder_xyz_empty
+        copy_center_right.influence = 0.5
 
-        # CONSTRAINT 3: STRETCH TO right shoulder to maintain shoulder width
+        # CONSTRAINT 3: STRETCH TO (To track shoulder width)
         stretch_to = coat_control.constraints.new(type='STRETCH_TO')
         stretch_to.target = right_shoulder_xyz_empty
-        stretch_to.rest_length = shoulder_width  # Initial distance between shoulders
-        stretch_to.volume = 'NO_VOLUME'  # Don't preserve volume, just stretch
+        stretch_to.rest_length = shoulder_width
+        stretch_to.volume = 'NO_VOLUME'
         stretch_to.influence = 1.0
 
-        # DEBUG: Verify we're using the correct empties
-        script_log(f"✓ Using XYZ empties: {left_shoulder_xyz_empty.name}, {right_shoulder_xyz_empty.name}")
-        script_log(f"✓ Damped Track: Following {right_shoulder_xyz_empty.name}")
-        script_log(f"✓ Copy Location: Anchored to {left_shoulder_xyz_empty.name}")
-        script_log(f"✓ Stretch To: Maintaining shoulder width {shoulder_width:.3f}")
-        script_log(f"✓ Horizontal cylinder follows via parenting to coat control")
+        # CONSTRAINT 4 & 5: COPY ROTATION (For Y/Z Orientation, FREE X-AXIS)
+        copy_rot_left = coat_control.constraints.new(type='COPY_ROTATION')
+        copy_rot_left.target = left_shoulder_xyz_empty
+        copy_rot_left.influence = 0.5
+        copy_rot_left.use_x = False
+        copy_rot_left.use_y = True
+        copy_rot_left.use_z = True
+
+        copy_rot_right = coat_control.constraints.new(type='COPY_ROTATION')
+        copy_rot_right.target = right_shoulder_xyz_empty
+        copy_rot_right.influence = 0.5
+        copy_rot_right.use_x = False
+        copy_rot_right.use_y = True
+        copy_rot_right.use_z = True
+
+        script_log(f"✓ Control empty is constrained via parent empty.")
 
         # =========================================================================
         # STEP 8.5: HIP PINNING SETUP FOR SHORT COATS - FIXED
@@ -5305,14 +5347,15 @@ def make_vertex_all_bundles(armature_obj):
             empty_type='PLAIN_AXES'
         )
         xyz_empty.parent = cp_obj
+        xyz_empty.location = (0, 0, 0)
 
         # Calculate proper rotation for this joint
         target_cp = bpy.data.objects.get(target_name) if target_name else None
-        proper_rotation = calculate_proper_rotation_for_joint(cp_obj, target_cp, cp_name)
 
-        # Apply rotation to XYZ empty
-        xyz_empty.rotation_mode = 'QUATERNION'
-        xyz_empty.rotation_quaternion = proper_rotation
+        # DO NOT apply rotation to XYZ empty
+        # proper_rotation = calculate_proper_rotation_for_joint(cp_obj, target_cp, cp_name)
+        # xyz_empty.rotation_mode = 'QUATERNION'
+        # xyz_empty.rotation_quaternion = proper_rotation
 
         # Create RPY empty (rotation master) - PARENTED TO XYZ EMPTY
         rpy_empty = create_empty_at_location(
