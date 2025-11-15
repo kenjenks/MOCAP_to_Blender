@@ -50,10 +50,19 @@ def main_execution():
         align_bones_with_control_points(armature_obj, figure_name)
 
         # 6. SET UP CONSTRAINTS
-        setup_direct_constraints(armature_obj, figure_name)
-        setup_hip_shoulder_constraints(armature_obj, figure_name)
-        setup_two_segment_spine_constraints(armature_obj, figure_name)
-        setup_root_bone_transform_constraints(armature_obj)
+        setup_root_bone_transform_constraints(armature_obj) #1 Order is important
+        setup_direct_constraints(armature_obj, figure_name) #2
+        setup_hip_shoulder_constraints(armature_obj, figure_name) #3
+        setup_two_segment_spine_constraints(armature_obj, figure_name) #4
+
+        # Force pose update
+        bpy.context.view_layer.objects.active = armature_obj
+        bpy.ops.object.mode_set(mode='POSE')
+        bpy.ops.pose.armature_apply(selected=False)  # Apply all constraints
+        bpy.ops.object.mode_set(mode='OBJECT')
+        bpy.context.view_layer.update()
+        debug_spine_complete(armature_obj)
+        debug_midpoint_complete()
 
         # 7. CREATE CLOTH GARMENTS (REPLACES KID FLESH)
         script_log("=== CREATING CLOTH GARMENTS ===")
@@ -350,11 +359,7 @@ def populate_joint_control_systems():
 
         # Head control points
         "CTRL_HEAD_TOP": {"radius": 0.08, "type": "head_neck"},
-        "CTRL_NOSE": {"radius": 0.03, "type": "head_tracking"},
-
-        # VIRTUAL CONTROL POINTS FOR NECK (ADD THESE)
-        "VIRTUAL_HEAD_BASE": {"radius": 0.06, "type": "head_neck"},
-        "VIRTUAL_SHOULDER_MIDPOINT": {"radius": 0.08, "type": "shoulder"},
+        "CTRL_NOSE": {"radius": 0.03, "type": "head_tracking"}
     }
 
     # Populate joint_control_systems with actual control point objects
@@ -652,11 +657,11 @@ def setup_imported_head(head_obj, armature_obj, garment_config, replaceable_conf
         if mod.type == 'ARMATURE':
             head_obj.modifiers.remove(mod)
 
-    # Get the proper head center between HEAD_TOP and VIRTUAL_HEAD_BASE
+    # Get the head center between HEAD_TOP and VIRTUAL_HEAD_BASE
     head_top_center = get_bundle_center("CTRL_HEAD_TOP")
     head_base_center = get_bundle_center("VIRTUAL_HEAD_BASE")
 
-    # Calculate midpoint between head top and head base for proper head center
+    # Calculate midpoint between head top and head base for head center
     if head_top_center and head_base_center:
         head_neck_center = (head_top_center + head_base_center) / 2
         # Use average radius from both points
@@ -1199,7 +1204,7 @@ def create_head(armature_obj, figure_name, garment_config, global_cloth_settings
             bpy.ops.object.mode_set(mode='OBJECT')
 
             # =========================================================================
-            # STEP 4: SETUP VERTEX GROUPS WITH VERTEX BUNDLE SYSTEM - FIXED
+            # STEP 4: SETUP VERTEX GROUPS WITH VERTEX BUNDLE SYSTEM
             # =========================================================================
             script_log("DEBUG: Setting up head vertex groups with vertex bundle system...")
 
@@ -2165,9 +2170,9 @@ def create_neck(armature_obj, figure_name, garment_config, global_cloth_settings
     # =========================================================================
     script_log("STEP 1: CREATING CYLINDER AT WORLD ORIGIN")
 
-    # FIX: Access properties directly from garment_config (assuming it is the 'garment_neck' dict)
+    # Access properties directly from garment_config (assuming it is the 'garment_neck' dict)
     neck_diameter = garment_config.get("neck_diameter", 0.14)
-    segments = garment_config.get("segments", 12)  # FIX: Use segments from config
+    segments = garment_config.get("segments", 12)  # Use segments from config
 
     cylinder_depth = actual_neck_length_rest
 
@@ -2184,7 +2189,7 @@ def create_neck(armature_obj, figure_name, garment_config, global_cloth_settings
     script_log(f"  Created cylinder at world origin: {neck_obj.location} with {segments} segments.")
 
     # =========================================================================
-    # STEP 2: CRITICAL - PARENT TO BONE FIRST
+    # STEP 2: PARENT TO BONE FIRST
     # =========================================================================
     script_log("STEP 2: PARENTING TO DEF_NECK BONE FIRST")
 
@@ -2195,7 +2200,7 @@ def create_neck(armature_obj, figure_name, garment_config, global_cloth_settings
     script_log(f"  Parented to: {neck_obj.parent_bone}")
 
     # =========================================================================
-    # STEP 3: CRITICAL - RESET TRANSFORMS AFTER PARENTING
+    # STEP 3: RESET TRANSFORMS AFTER PARENTING
     # =========================================================================
     script_log("STEP 3: RESETTING TRANSFORMS AFTER PARENTING to align local space with bone's rest pose")
 
@@ -2210,9 +2215,9 @@ def create_neck(armature_obj, figure_name, garment_config, global_cloth_settings
     script_log(f"  Reset scale: {neck_obj.scale}")
 
     # =========================================================================
-    # STEP 4: POSITION & ROTATE IN BONE LOCAL SPACE (ALIGNMENT FIX)
+    # STEP 4: POSITION & ROTATE IN BONE LOCAL SPACE
     # =========================================================================
-    script_log("STEP 4: POSITIONING & ROTATING IN BONE LOCAL SPACE (Final Alignment Attempt)")
+    script_log("STEP 4: POSITIONING & ROTATING IN BONE LOCAL SPACE")
 
     # 1. Calculate the rotation required to align the cylinder's Z (length) with the bone's Z.
     bone_rotation_quat = bone_matrix_rest.to_quaternion()
@@ -4533,7 +4538,7 @@ def create_coat(armature_obj, figure_name):
         script_log(f"✓ Control empty is constrained via parent empty.")
 
         # =========================================================================
-        # STEP 8.5: HIP PINNING SETUP FOR SHORT COATS - FIXED
+        # STEP 8.5: HIP PINNING SETUP FOR SHORT COATS
         # =========================================================================
 
         coat_config = garment_configs.get("coat_torso", {})
@@ -5133,6 +5138,7 @@ def create_hip_frame_control_point(first_frame):
     bpy.ops.object.empty_add(type='SINGLE_ARROW')  # Visualize orientation
     hip_frame = bpy.context.active_object
     hip_frame.name = "VIRTUAL_HIP_FRAME"
+    hip_frame.parent = None
 
     # Position at midpoint between hips
     left_hip_pos = get_landmark_position(first_frame, "LEFT_HIP")
@@ -5163,6 +5169,9 @@ def create_hip_frame_control_point(first_frame):
     control_collection = bpy.data.collections.get("Main_ControlPoints")
     if control_collection and hip_frame.name not in control_collection.objects:
         control_collection.objects.link(hip_frame)
+
+    bpy.context.view_layer.update()
+    bpy.context.evaluated_depsgraph_get().update()
 
     script_log(f"Created VIRTUAL_HIP_FRAME at {hip_frame.location} with rotation {hip_frame.rotation_euler}")
     return hip_frame
@@ -5275,28 +5284,13 @@ def setup_damped_track_rpy(control_point_name, target_control_point):
         return False
 
 ##########################################################################################
+
 def make_vertex_all_bundles(armature_obj):
-    """Create all vertex bundle systems with PROPER ROTATION from the start"""
-    script_log("=== CREATING VERTEX BUNDLE SYSTEMS WITH PROPER ROTATION ===")
+    """Create all vertex bundle systems"""
+    script_log("=== CREATING VERTEX BUNDLE SYSTEMS ===")
 
     # Clear any existing entries
     joint_control_systems.clear()
-
-    # Define limb chains with proper target directions
-    limb_chains = {
-        # Left leg
-        "CTRL_LEFT_HIP": "CTRL_LEFT_KNEE",
-        "CTRL_LEFT_KNEE": "CTRL_LEFT_HEEL",
-        # Right leg
-        "CTRL_RIGHT_HIP": "CTRL_RIGHT_KNEE",
-        "CTRL_RIGHT_KNEE": "CTRL_RIGHT_HEEL",
-        # Left arm
-        "CTRL_LEFT_SHOULDER": "CTRL_LEFT_ELBOW",
-        "CTRL_LEFT_ELBOW": "CTRL_LEFT_WRIST",
-        # Right arm
-        "CTRL_RIGHT_SHOULDER": "CTRL_RIGHT_ELBOW",
-        "CTRL_RIGHT_ELBOW": "CTRL_RIGHT_WRIST",
-    }
 
     control_points_with_sides = [
         # Shoulder control points
@@ -5331,6 +5325,11 @@ def make_vertex_all_bundles(armature_obj):
     # Create two-empties system for each control point
     for cp_data in control_points_with_sides:
         cp_name = cp_data["name"]
+
+        if cp_name.startswith("VIRTUAL_"):
+            script_log(f"⚠ Skipping virtual point: {cp_name}")
+            continue
+
         side = cp_data["side"]
         target_name = cp_data["target"]
 
@@ -5339,7 +5338,7 @@ def make_vertex_all_bundles(armature_obj):
             script_log(f"ERROR: Control point {cp_name} not found in scene")
             continue
 
-        # Create XYZ empty (position master) - PARENTED TO CONTROL POINT
+        # Create XYZ empty (position master)
         xyz_empty = create_empty_at_location(
             f"XYZ_{cp_name}",
             location=(0, 0, 0),
@@ -5509,6 +5508,8 @@ def create_shoulder_frame_control_point(first_frame):
     if control_collection and shoulder_frame.name not in control_collection.objects:
         control_collection.objects.link(shoulder_frame)
 
+    bpy.context.view_layer.update()
+    bpy.context.evaluated_depsgraph_get().update()
     script_log(
         f"Created VIRTUAL_SHOULDER_FRAME at {shoulder_frame.location} with rotation {shoulder_frame.rotation_euler}")
     return shoulder_frame
@@ -5542,6 +5543,7 @@ def create_control_points(figure_name, armature_obj=None):
         bpy.ops.object.empty_add(type='PLAIN_AXES', location=(0, 0, 0))
         empty_obj = bpy.context.active_object
         empty_obj.name = virtual_point_name
+        empty_obj.parent = None
 
         # Position from virtual calculation
         position = calculate_virtual_position(first_frame, virtual_point_name)
@@ -5652,19 +5654,12 @@ def setup_root_bone_transform_constraints(armature_obj):
             copy_transform.target = shoulder_frame
             copy_transform.influence = 1.0
 
-            # LIMIT ROTATION to block twisting around the X-axis (left-right shoulder axis)
-            limit_rotation = shoulder_root.constraints.new('LIMIT_ROTATION')
-            limit_rotation.use_limit_x = True
-            limit_rotation.min_x = 0.0  # Lock X-axis rotation completely
-            limit_rotation.max_x = 0.0
-            limit_rotation.use_limit_y = False  # Allow Y-axis rotation (forward/backward tilt)
-            limit_rotation.use_limit_z = False  # Allow Z-axis rotation (side-to-side tilt)
-            limit_rotation.owner_space = 'LOCAL'  # Limit in the bone's local space
-
             constraints_added += 2
             script_log("DEF_ShoulderRoot: COPY_TRANSFORMS -> VIRTUAL_SHOULDER_FRAME with X-axis rotation locked")
 
     bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.context.view_layer.update()
+    bpy.context.evaluated_depsgraph_get().update()
     script_log(f"Root bone transform constraints: {constraints_added} constraints added")
     return constraints_added
 
@@ -5672,60 +5667,47 @@ def setup_root_bone_transform_constraints(armature_obj):
 ##########################################################################################
 
 def setup_virtual_frame_constraints():
-    """Set up constraints for the frame control points to follow the virtual midpoints and update rotation from landmarks"""
+    """Set up constraints for the frame control points to follow the virtual midpoints"""
     script_log("=== SETTING UP VIRTUAL FRAME CONSTRAINTS ===")
 
     constraints_added = 0
 
-    # VIRTUAL_HIP_FRAME should follow VIRTUAL_HIP_MIDPOINT location AND calculate rotation from hip landmarks
+    # VIRTUAL_HIP_FRAME should follow VIRTUAL_HIP_MIDPOINT location ONLY
     hip_frame = bpy.data.objects.get("VIRTUAL_HIP_FRAME")
     hip_midpoint = bpy.data.objects.get("VIRTUAL_HIP_MIDPOINT")
-    left_hip = bpy.data.objects.get("CTRL_LEFT_HIP")
-    right_hip = bpy.data.objects.get("CTRL_RIGHT_HIP")
 
-    if hip_frame and hip_midpoint and left_hip and right_hip:
+    if hip_frame and hip_midpoint:
         # Clear existing constraints
         for constraint in list(hip_frame.constraints):
             hip_frame.constraints.remove(constraint)
 
-        # Copy location from midpoint
+        # Copy location from midpoint (NO ROTATION TRACKING)
         copy_loc = hip_frame.constraints.new('COPY_LOCATION')
         copy_loc.target = hip_midpoint
         copy_loc.influence = 1.0
 
-        # Use DAMPED_TRACK to make the frame point from left hip to right hip
-        damped_track = hip_frame.constraints.new('DAMPED_TRACK')
-        damped_track.target = right_hip
-        damped_track.track_axis = 'TRACK_X'  # X-axis should point from left to right hip
+        constraints_added += 1
+        script_log("VIRTUAL_HIP_FRAME: COPY_LOCATION -> VIRTUAL_HIP_MIDPOINT")
 
-        constraints_added += 2
-        script_log("VIRTUAL_HIP_FRAME: COPY_LOCATION -> VIRTUAL_HIP_MIDPOINT, DAMPED_TRACK -> CTRL_RIGHT_HIP")
-
-    # VIRTUAL_SHOULDER_FRAME should follow VIRTUAL_SHOULDER_MIDPOINT location AND calculate rotation from shoulder landmarks
+    # VIRTUAL_SHOULDER_FRAME should follow VIRTUAL_SHOULDER_MIDPOINT location ONLY
     shoulder_frame = bpy.data.objects.get("VIRTUAL_SHOULDER_FRAME")
     shoulder_midpoint = bpy.data.objects.get("VIRTUAL_SHOULDER_MIDPOINT")
-    left_shoulder = bpy.data.objects.get("CTRL_LEFT_SHOULDER")
-    right_shoulder = bpy.data.objects.get("CTRL_RIGHT_SHOULDER")
 
-    if shoulder_frame and shoulder_midpoint and left_shoulder and right_shoulder:
+    if shoulder_frame and shoulder_midpoint:
         # Clear existing constraints
         for constraint in list(shoulder_frame.constraints):
             shoulder_frame.constraints.remove(constraint)
 
-        # Copy location from midpoint
+        # Copy location from midpoint (NO ROTATION TRACKING)
         copy_loc = shoulder_frame.constraints.new('COPY_LOCATION')
         copy_loc.target = shoulder_midpoint
         copy_loc.influence = 1.0
 
-        # Use DAMPED_TRACK to make the frame point from left shoulder to right shoulder
-        damped_track = shoulder_frame.constraints.new('DAMPED_TRACK')
-        damped_track.target = right_shoulder
-        damped_track.track_axis = 'TRACK_X'  # X-axis should point from left to right shoulder
+        constraints_added += 1
+        script_log("VIRTUAL_SHOULDER_FRAME: COPY_LOCATION -> VIRTUAL_SHOULDER_MIDPOINT")
 
-        constraints_added += 2
-        script_log(
-            "VIRTUAL_SHOULDER_FRAME: COPY_LOCATION -> VIRTUAL_SHOULDER_MIDPOINT, DAMPED_TRACK -> CTRL_RIGHT_SHOULDER")
-
+    bpy.context.view_layer.update()
+    bpy.context.evaluated_depsgraph_get().update()
     script_log(f"Virtual frame constraints: {constraints_added} constraints added")
     return constraints_added
 
@@ -5743,6 +5725,7 @@ def setup_virtual_point_constraints():
     right_hip = bpy.data.objects.get("CTRL_RIGHT_HIP")
 
     if hip_midpoint and left_hip and right_hip:
+        hip_midpoint.parent = None
         for constraint in list(hip_midpoint.constraints):
             hip_midpoint.constraints.remove(constraint)
 
@@ -5765,6 +5748,7 @@ def setup_virtual_point_constraints():
     right_shoulder = bpy.data.objects.get("CTRL_RIGHT_SHOULDER")
 
     if shoulder_midpoint and left_shoulder and right_shoulder:
+        shoulder_midpoint.parent = None
         for constraint in list(shoulder_midpoint.constraints):
             shoulder_midpoint.constraints.remove(constraint)
 
@@ -5835,6 +5819,7 @@ def setup_virtual_point_constraints():
             script_log("WARNING: VIRTUAL_HEAD_BASE has no targets (missing CTRL_HEAD_TOP and CTRL_NOSE)")
 
     bpy.context.view_layer.update()
+    bpy.context.evaluated_depsgraph_get().update()
     script_log(f"Virtual point constraints: {constraints_added} constraints added")
     return constraints_added
 
@@ -6107,6 +6092,175 @@ def create_kid_rig(figure_name):
 
     return armature_obj
 
+##########################################################################################
+
+def debug_midpoint_complete():
+    """Complete diagnostic for midpoint issues"""
+    script_log("=== COMPLETE MIDPOINT DIAGNOSTIC ===")
+
+    midpoints = ["VIRTUAL_HIP_MIDPOINT", "VIRTUAL_SHOULDER_MIDPOINT"]
+
+    for midpoint_name in midpoints:
+        obj = bpy.data.objects.get(midpoint_name)
+        if not obj:
+            continue
+
+        script_log(f"\n{midpoint_name}:")
+        script_log(f"  Parent: {obj.parent.name if obj.parent else 'None'}")
+        script_log(f"  Location (local): {obj.location}")
+        script_log(f"  Location (world): {obj.matrix_world.translation}")
+        script_log(f"  Rotation: {obj.rotation_euler}")
+        script_log(f"  Scale: {obj.scale}")
+
+        # Check constraints
+        script_log(f"  Constraints ({len(obj.constraints)}):")
+        for c in obj.constraints:
+            target_name = c.target.name if hasattr(c, 'target') and c.target else 'None'
+            influence = c.influence if hasattr(c, 'influence') else 'N/A'
+            use_offset = c.use_offset if hasattr(c, 'use_offset') else 'N/A'
+            script_log(f"    - {c.type}: target={target_name}, influence={influence}, use_offset={use_offset}")
+
+        # Check if in any collections that might have transforms
+        script_log(f"  Collections: {[c.name for c in obj.users_collection]}")
+
+##########################################################################################
+
+def debug_spine_complete(armature_obj):
+    """Complete spine diagnostic - check everything"""
+    script_log("=== COMPLETE SPINE DIAGNOSTIC ===")
+
+    # Force a complete scene update first
+    bpy.context.view_layer.update()
+    bpy.context.evaluated_depsgraph_get().update()
+
+    bpy.context.view_layer.objects.active = armature_obj
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.context.view_layer.update()
+
+    # Check frame empties
+    hip_frame = bpy.data.objects.get("VIRTUAL_HIP_FRAME")
+    shoulder_frame = bpy.data.objects.get("VIRTUAL_SHOULDER_FRAME")
+
+    script_log("=== FRAME EMPTIES ===")
+    if hip_frame:
+        script_log(f"VIRTUAL_HIP_FRAME location: {hip_frame.location}")
+        script_log(f"VIRTUAL_HIP_FRAME matrix_world: {hip_frame.matrix_world.translation}")
+        script_log(f"VIRTUAL_HIP_FRAME rotation: {hip_frame.rotation_euler}")
+
+    if shoulder_frame:
+        script_log(f"VIRTUAL_SHOULDER_FRAME location: {shoulder_frame.location}")
+        script_log(f"VIRTUAL_SHOULDER_FRAME matrix_world: {shoulder_frame.matrix_world.translation}")
+        script_log(f"VIRTUAL_SHOULDER_FRAME rotation: {shoulder_frame.rotation_euler}")
+
+    # Check root bones
+    hip_root = armature_obj.pose.bones.get("DEF_HipRoot")
+    shoulder_root = armature_obj.pose.bones.get("DEF_ShoulderRoot")
+
+    script_log("=== ROOT BONES ===")
+    if hip_root:
+        head_world = armature_obj.matrix_world @ hip_root.head
+        script_log(f"DEF_HipRoot head (world): {head_world}")
+        script_log(f"DEF_HipRoot location: {hip_root.location}")
+        script_log(f"DEF_HipRoot matrix (world): {hip_root.matrix.translation}")
+
+        # Check constraints
+        script_log(f"DEF_HipRoot constraints: {len(hip_root.constraints)}")
+        for c in hip_root.constraints:
+            script_log(
+                f"  - {c.type}: target={c.target.name if hasattr(c, 'target') and c.target else 'None'}, influence={c.influence if hasattr(c, 'influence') else 'N/A'}")
+
+    if shoulder_root:
+        head_world = armature_obj.matrix_world @ shoulder_root.head
+        script_log(f"DEF_ShoulderRoot head (world): {head_world}")
+        script_log(f"DEF_ShoulderRoot location: {shoulder_root.location}")
+        script_log(f"DEF_ShoulderRoot matrix (world): {shoulder_root.matrix.translation}")
+
+        # Check constraints
+        script_log(f"DEF_ShoulderRoot constraints: {len(shoulder_root.constraints)}")
+        for c in shoulder_root.constraints:
+            script_log(
+                f"  - {c.type}: target={c.target.name if hasattr(c, 'target') and c.target else 'None'}, influence={c.influence if hasattr(c, 'influence') else 'N/A'}")
+
+    # Check spine bones
+    lower_spine = armature_obj.pose.bones.get("DEF_LowerSpine")
+    upper_spine = armature_obj.pose.bones.get("DEF_UpperSpine")
+
+    script_log("=== SPINE BONES ===")
+    if lower_spine:
+        head_world = armature_obj.matrix_world @ lower_spine.head
+        tail_world = armature_obj.matrix_world @ lower_spine.tail
+        script_log(f"DEF_LowerSpine head (world): {head_world}")
+        script_log(f"DEF_LowerSpine tail (world): {tail_world}")
+        script_log(f"DEF_LowerSpine constraints: {len(lower_spine.constraints)}")
+        for c in lower_spine.constraints:
+            script_log(f"  - {c.type}: target={c.target.name if hasattr(c, 'target') and c.target else 'None'}")
+
+    if upper_spine:
+        head_world = armature_obj.matrix_world @ upper_spine.head
+        tail_world = armature_obj.matrix_world @ upper_spine.tail
+        script_log(f"DEF_UpperSpine head (world): {head_world}")
+        script_log(f"DEF_UpperSpine tail (world): {tail_world}")
+        script_log(f"DEF_UpperSpine constraints: {len(upper_spine.constraints)}")
+        for c in upper_spine.constraints:
+            script_log(f"  - {c.type}: target={c.target.name if hasattr(c, 'target') and c.target else 'None'}")
+
+    # Check virtual spine midpoint
+    spine_mid = bpy.data.objects.get("VIRTUAL_SPINE_MIDPOINT")
+    if spine_mid:
+        script_log("=== VIRTUAL SPINE MIDPOINT ===")
+        script_log(f"Location: {spine_mid.location}")
+        script_log(f"Matrix world: {spine_mid.matrix_world.translation}")
+        script_log(f"Constraints: {len(spine_mid.constraints)}")
+        for c in spine_mid.constraints:
+            script_log(
+                f"  - {c.type}: target={c.target.name if hasattr(c, 'target') and c.target else 'None'}, influence={c.influence if hasattr(c, 'influence') else 'N/A'}")
+
+##########################################################################################
+
+def debug_virtual_midpoint():
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.context.view_layer.update()
+
+    spine_mid = bpy.data.objects.get("VIRTUAL_SPINE_MIDPOINT")
+    hip_mid = bpy.data.objects.get("VIRTUAL_HIP_MIDPOINT")
+    shoulder_mid = bpy.data.objects.get("VIRTUAL_SHOULDER_MIDPOINT")
+
+    left_hip = bpy.data.objects.get("CTRL_LEFT_HIP")
+    right_hip = bpy.data.objects.get("CTRL_RIGHT_HIP")
+    left_shoulder = bpy.data.objects.get("CTRL_LEFT_SHOULDER")
+    right_shoulder = bpy.data.objects.get("CTRL_RIGHT_SHOULDER")
+
+    script_log("=== debug_virtual_midpoint VIRTUAL MIDPOINT ANALYSIS ===")
+    script_log(f"CTRL_LEFT_HIP: {left_hip.location}")
+    script_log(f"CTRL_RIGHT_HIP: {right_hip.location}")
+    script_log(f"VIRTUAL_HIP_MIDPOINT (should be 0.0): {hip_mid.location}")
+    script_log(f"")
+    script_log(f"CTRL_LEFT_SHOULDER: {left_shoulder.location}")
+    script_log(f"CTRL_RIGHT_SHOULDER: {right_shoulder.location}")
+    script_log(f"VIRTUAL_SHOULDER_MIDPOINT (should be 0.0): {shoulder_mid.location}")
+    script_log(f"")
+    script_log(f"VIRTUAL_SPINE_MIDPOINT (should be 0.0): {spine_mid.location}")
+
+##########################################################################################
+
+def debug_spine_with_parents(armature_obj):
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.context.view_layer.update()
+
+    hip_root = armature_obj.pose.bones.get("DEF_HipRoot")
+    shoulder_root = armature_obj.pose.bones.get("DEF_ShoulderRoot")
+    lower_spine = armature_obj.pose.bones.get("DEF_LowerSpine")
+    upper_spine = armature_obj.pose.bones.get("DEF_UpperSpine")
+
+    script_log("=== debug_spine_with_parents SPINE PARENT ANALYSIS ===")
+    script_log(f"HipRoot world head: {armature_obj.matrix_world @ hip_root.head}")
+    script_log(f"LowerSpine world head: {armature_obj.matrix_world @ lower_spine.head}")
+    script_log(f"LowerSpine world tail: {armature_obj.matrix_world @ lower_spine.tail}")
+    script_log(f"ShoulderRoot world head: {armature_obj.matrix_world @ shoulder_root.head}")
+    script_log(f"UpperSpine world head: {armature_obj.matrix_world @ upper_spine.head}")
+    script_log(f"UpperSpine world tail: {armature_obj.matrix_world @ upper_spine.tail}")
+
+    debug_virtual_midpoint()
 
 ##########################################################################################
 
@@ -6122,7 +6276,7 @@ def setup_two_segment_spine_constraints(armature_obj, figure_name):
     # Get the virtual points
     spine_mid_target = bpy.data.objects.get("VIRTUAL_SPINE_MIDPOINT")
 
-    # LOWER SPINE CONSTRAINTS: Tail stretches to virtual spine midpoint
+    # LOWER SPINE: Only tail stretches to midpoint
     if "DEF_LowerSpine" in armature_obj.pose.bones and spine_mid_target:
         lower_spine = armature_obj.pose.bones["DEF_LowerSpine"]
 
@@ -6130,15 +6284,17 @@ def setup_two_segment_spine_constraints(armature_obj, figure_name):
         for constraint in list(lower_spine.constraints):
             lower_spine.constraints.remove(constraint)
 
-        # HEAD POSITION & ROTATION: Handled by parenting to HipRoot (with coordinate frame)
+        # Set inherit rotation to TRUE
+        lower_spine.bone.use_inherit_rotation = True
+
         # TAIL: STRETCH_TO to virtual spine midpoint
         stretch_to = lower_spine.constraints.new('STRETCH_TO')
         stretch_to.target = spine_mid_target
         stretch_to.influence = 1.0
+        stretch_to.rest_length = 0.0  # Let it calculate automatically
         constraints_added += 1
-        script_log("DEF_LowerSpine STRETCH_TO -> VIRTUAL_SPINE_MIDPOINT (tail stretches to center)")
 
-    # UPPER SPINE CONSTRAINTS: Tail stretches to virtual spine midpoint
+    # UPPER SPINE: Only tail stretches to midpoint
     if "DEF_UpperSpine" in armature_obj.pose.bones and spine_mid_target:
         upper_spine = armature_obj.pose.bones["DEF_UpperSpine"]
 
@@ -6146,18 +6302,21 @@ def setup_two_segment_spine_constraints(armature_obj, figure_name):
         for constraint in list(upper_spine.constraints):
             upper_spine.constraints.remove(constraint)
 
-        # HEAD POSITION & ROTATION: Handled by parenting to ShoulderRoot (with coordinate frame)
+        # Set inherit rotation to TRUE
+        upper_spine.bone.use_inherit_rotation = True
+
         # TAIL: STRETCH_TO to virtual spine midpoint
         stretch_to = upper_spine.constraints.new('STRETCH_TO')
         stretch_to.target = spine_mid_target
         stretch_to.influence = 1.0
+        stretch_to.rest_length = 0.0  # Let it calculate automatically
         constraints_added += 1
-        script_log("DEF_UpperSpine STRETCH_TO -> VIRTUAL_SPINE_MIDPOINT (tail stretches to center)")
 
     bpy.ops.object.mode_set(mode='OBJECT')
-    script_log(f"Hierarchy-driven spine constraints: {constraints_added} constraints added")
+    bpy.context.view_layer.update()
+    bpy.context.evaluated_depsgraph_get().update()
+    debug_spine_with_parents(armature_obj)
     return constraints_added
-
 
 ##########################################################################################
 
@@ -6261,6 +6420,8 @@ def setup_direct_constraints(armature_obj, figure_name="Main"):
                     script_log(f"Created CTRL_NOSE at {nose_pos}")
 
     bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.context.view_layer.update()
+    bpy.context.evaluated_depsgraph_get().update()
     script_log(f"Direct constraints: {constraints_added} constraints added")
     return constraints_added
 
@@ -6297,7 +6458,7 @@ def align_bones_with_control_points(armature_obj, figure_name):
 
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.context.view_layer.update()
-
+    bpy.context.evaluated_depsgraph_get().update()
     script_log(f"Bone alignment complete: {bones_aligned} bones aligned")
     return bones_aligned
 
@@ -6382,6 +6543,8 @@ def setup_hip_shoulder_constraints(armature_obj, figure_name="Main"):
                 script_log(f"{bone_name} STRETCH_TO -> {control_point}")
 
     bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.context.view_layer.update()
+    bpy.context.evaluated_depsgraph_get().update()
     script_log(f"Hip & shoulder constraints: {constraints_added} constraints added")
     return constraints_added
 
